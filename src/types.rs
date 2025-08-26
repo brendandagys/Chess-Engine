@@ -1,3 +1,9 @@
+use crate::{
+    bitboard::BitBoard,
+    constants::{INIT_BOARD, INIT_COLOR, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES},
+    hash::Hash,
+};
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[rustfmt::skip]
@@ -89,6 +95,47 @@ pub enum Piece {
     Empty,
 }
 
+impl Piece {
+    pub const fn value(self) -> i32 {
+        match self {
+            Piece::Pawn => 100,
+            Piece::Knight => 300,
+            Piece::Bishop => 300,
+            Piece::Rook => 500,
+            Piece::Queen => 900,
+            Piece::King => 10000,
+            Piece::Empty => 0,
+        }
+    }
+
+    pub fn iter() -> impl Iterator<Item = Piece> {
+        [
+            Piece::Pawn,
+            Piece::Knight,
+            Piece::Bishop,
+            Piece::Rook,
+            Piece::Queen,
+            Piece::King,
+            Piece::Empty,
+        ]
+        .into_iter()
+    }
+}
+
+impl TryFrom<u8> for Piece {
+    type Error = &'static str;
+
+    /// Converts from a number representing the piece
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value > 6 {
+            return Err("Piece index out of range (must be 0-6)");
+        }
+
+        // SAFETY: We've verified value is in range 0-6, which matches our enum variants
+        Ok(unsafe { std::mem::transmute(value) })
+    }
+}
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Side {
@@ -96,12 +143,32 @@ pub enum Side {
     Black = 1,
 }
 
+impl Side {
+    pub fn iter() -> impl Iterator<Item = Side> {
+        [Side::White, Side::Black].into_iter()
+    }
+}
+
+impl TryFrom<u8> for Side {
+    type Error = &'static str;
+
+    /// Converts from a number representing the piece
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value > 1 {
+            return Err("Side index out of range (must be 0-1)");
+        }
+
+        // SAFETY: We've verified value is in range 0-1, which matches our enum variants
+        Ok(unsafe { std::mem::transmute(value) })
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Move {
-    start: Square,
-    destination: Square,
-    promote: Option<Piece>,
-    score: usize, // Used when sorting moves. Higher scores are searched first.
+    pub from: Square,
+    pub to: Square,
+    pub promote: Option<Piece>,
+    pub score: usize, // Used when sorting moves. Higher scores are searched first.
 }
 
 #[derive(Clone, Copy)]
@@ -110,8 +177,57 @@ pub struct Game {
     destination: Square,
     promote: Option<Piece>,
     capture: Option<Square>,
-    fifty: u8,   // Moves since last pawn move or capture
+    fifty: u8,   // Moves since last pawn move or capture (up to 100-ply)
     castle: u8,  // Castle permissions
     hash: usize, // Number to help test for repetition
     lock: usize, // Number to help test for repetition
+}
+
+pub struct Board {
+    pub value: [Piece; NUM_SQUARES],
+    bit_pieces: [[BitBoard; NUM_PIECE_TYPES]; NUM_SIDES], // [side][piece]
+    pub bit_units: [BitBoard; NUM_SIDES],                 // [side]
+    bit_all: BitBoard,
+    hash: Hash,
+}
+
+impl Board {
+    pub fn new() -> Self {
+        let mut board = [Piece::Empty; NUM_SQUARES];
+
+        let mut bit_pieces = [[BitBoard(0); NUM_PIECE_TYPES]; NUM_SIDES];
+        let mut bit_units = [BitBoard(0); NUM_SIDES];
+        let mut bit_all = BitBoard(0);
+
+        let mut hash = Hash::new();
+
+        for square in Square::iter() {
+            let piece = Piece::try_from(INIT_BOARD[square as usize]).unwrap();
+            let side = Side::try_from(INIT_COLOR[square as usize]).unwrap();
+
+            if piece != Piece::Empty {
+                board[square as usize] = piece;
+                hash.update_position_hash_key(side, piece, square);
+                bit_pieces[side as usize][piece as usize].set_bit(square);
+                bit_units[side as usize].set_bit(square);
+                bit_all.set_bit(square);
+            }
+        }
+
+        Self {
+            value: board,
+            bit_pieces,
+            bit_units,
+            bit_all,
+            hash,
+        }
+    }
+
+    pub fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        self.value[square as usize] = piece;
+        self.hash.update_position_hash_key(side, piece, square);
+        self.bit_pieces[side as usize][piece as usize].set_bit(square);
+        self.bit_units[side as usize].set_bit(square);
+        self.bit_all.set_bit(square);
+    }
 }

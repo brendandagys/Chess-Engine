@@ -22,6 +22,33 @@ pub const HASH_SCORE: i32 = 100_000_000;
 /// Added to move score so that captures are search right after the hash table.
 pub const CAPTURE_SCORE: i32 = 10_000_000;
 
+pub const MAX_HASH: usize = 5_000_000;
+pub const HASH_SIZE: usize = 5_000_000;
+
+#[rustfmt::skip]
+pub const INIT_COLOR: [u8; NUM_SQUARES] = [
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1
+];
+
+#[rustfmt::skip]
+pub const INIT_BOARD: [u8; NUM_SQUARES] = [
+    3, 1, 2, 4, 5, 2, 1, 3,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    6, 6, 6, 6, 6, 6, 6, 6,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    3, 1, 2, 4, 5, 2, 1, 3
+];
+
 #[rustfmt::skip]
 pub const ROW: [u8; NUM_SQUARES] = [
     0, 0, 0, 0, 0, 0, 0, 0,
@@ -82,6 +109,7 @@ pub const FLIPPED_BOARD_SQUARE: [u8; NUM_SQUARES] = [
      0,  1,  2,  3,  4,  5,  6,  7
 ];
 
+/// A1 - H8
 #[rustfmt::skip]
 pub const PAWN_SCORE: [i32; NUM_SQUARES] = [
 	    0,   0,   0,   0,   0,   0,   0,   0,
@@ -168,14 +196,14 @@ pub const KING_ENDGAME_SCORE: [i32; NUM_SQUARES] = [
 
 #[rustfmt::skip]
 pub const PASSED_SCORE: [i32; NUM_SQUARES] = [
-	   0,  0,  0,  0,  0,  0,  0,  0,
-	   0,  0,  0,  0,  0,  0,  0,  0,
-	  60, 60, 60, 60, 60, 60, 60, 60,
-	  30, 30, 30, 30, 30, 30, 30, 30,
-	  15, 15, 15, 15, 15, 15, 15, 15,
-	   8,  8,  8,  8,  8,  8,  8,  8,
-	   8,  8,  8,  8,  8,  8,  8,  8,
-	   0,  0,  0,  0,  0,  0,  0,  0
+     0,  0,  0,  0,  0,  0,  0,  0,
+     8,  8,  8,  8,  8,  8,  8,  8,
+     8,  8,  8,  8,  8,  8,  8,  8,
+    15, 15, 15, 15, 15, 15, 15, 15,
+    30, 30, 30, 30, 30, 30, 30, 30,
+    60, 60, 60, 60, 60, 60, 60, 60,
+     0,  0,  0,  0,  0,  0,  0,  0, // 7th rank; always passed; handled by `pawn_score`
+     0,  0,  0,  0,  0,  0,  0,  0
 ];
 
 /// Used to determine the castling permissions after a move.
