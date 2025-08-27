@@ -34,8 +34,8 @@ impl HashTable {
 }
 
 pub struct Hash {
-    current_key: u64,
-    current_lock: u64,
+    pub current_key: u64,
+    pub current_lock: u64,
     collisions: u64,
     hash_tables: [HashTable; NUM_SIDES],
 }
@@ -53,7 +53,7 @@ impl Hash {
     }
 
     /// Add an entry to the hash table, possibly overwriting
-    pub fn update_position(&mut self, side: usize, move_: Move) {
+    pub fn update_position_best_move(&mut self, side: usize, move_: Move) {
         let index = (self.current_key as usize) % MAX_HASH;
         let entry = &mut self.hash_tables[side].positions[index];
 
@@ -63,7 +63,7 @@ impl Hash {
     }
 
     /// Update the current key and lock. Called when pieces are moved on the board.
-    pub fn update_position_hash_key(&mut self, side: Side, piece: Piece, square: Square) {
+    pub fn update_position_hash_key_and_lock(&mut self, side: Side, piece: Piece, square: Square) {
         if let (Some(hash_table), Some(lock_table)) =
             (ZOBRIST_HASH_TABLE.get(), ZOBRIST_LOCK_TABLE.get())
         {
