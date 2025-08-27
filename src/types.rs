@@ -41,6 +41,19 @@ impl Square {
     }
 }
 
+impl From<BitBoard> for Square {
+    fn from(bitboard: BitBoard) -> Self {
+        if bitboard.0.count_ones() != 1 {
+            panic!("BitBoard must have exactly one bit set to convert to Square");
+        }
+
+        let index = bitboard.0.trailing_zeros() as u8;
+
+        // SAFETY: We've verified index is in range 0-63, which matches our enum variants
+        unsafe { std::mem::transmute(index) }
+    }
+}
+
 impl TryFrom<i32> for Square {
     type Error = &'static str;
 
@@ -147,6 +160,13 @@ impl Side {
     pub fn iter() -> impl Iterator<Item = Side> {
         [Side::White, Side::Black].into_iter()
     }
+
+    pub fn opponent(self) -> Side {
+        match self {
+            Side::White => Side::Black,
+            Side::Black => Side::White,
+        }
+    }
 }
 
 impl TryFrom<u8> for Side {
@@ -185,9 +205,9 @@ pub struct Game {
 
 pub struct Board {
     pub value: [Piece; NUM_SQUARES],
-    bit_pieces: [[BitBoard; NUM_PIECE_TYPES]; NUM_SIDES], // [side][piece]
-    pub bit_units: [BitBoard; NUM_SIDES],                 // [side]
-    bit_all: BitBoard,
+    pub bit_pieces: [[BitBoard; NUM_PIECE_TYPES]; NUM_SIDES], // [side][piece]
+    pub bit_units: [BitBoard; NUM_SIDES],                     // [side]
+    pub bit_all: BitBoard,
     hash: Hash,
 }
 

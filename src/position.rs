@@ -10,7 +10,7 @@ use crate::{
 };
 
 pub struct Position {
-    // Dynamic
+    // DYNAMIC
     move_list: [Option<Move>; MOVE_STACK],
     first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
     game_list: [Option<Game>; GAME_STACK],
@@ -24,7 +24,7 @@ pub struct Position {
     piece_material_score: [usize; NUM_SIDES],
     castle: u8, // Castle permissions
     turn: Side,
-    // Static
+    // STATIC
     side: Side,
     other_side: Side,
     square_score: [[[i32; NUM_SQUARES]; NUM_PIECE_TYPES]; NUM_SIDES],
@@ -648,6 +648,103 @@ impl Position {
         }
 
         (bit_queen_moves, bit_rook_moves, bit_bishop_moves)
+    }
+
+    pub fn is_square_attacked_by_side(&self, side: Side, square: Square) -> bool {
+        let bit_pieces = self.board.bit_pieces[side as usize];
+
+        if (self.bit_pawn_defends[side as usize][square as usize].0
+            & bit_pieces[Piece::Pawn as usize].0)
+            != 0
+        {
+            return true;
+        }
+
+        if (self.bit_knight_moves[square as usize].0 & bit_pieces[Piece::Knight as usize].0) != 0 {
+            return true;
+        }
+
+        let mut b1 = BitBoard(
+            (self.bit_rook_moves[square as usize].0
+                & (bit_pieces[Piece::Rook as usize].0 | bit_pieces[Piece::Queen as usize].0))
+                | (self.bit_bishop_moves[square as usize].0
+                    & (bit_pieces[Piece::Bishop as usize].0 | bit_pieces[Piece::Queen as usize].0)),
+        );
+
+        while b1.0 != 0 {
+            let attacking_piece = b1.next_bit();
+
+            if (self.bit_between[attacking_piece as usize][square as usize].0
+                & self.board.bit_all.0)
+                == 0
+            {
+                return true;
+            }
+        }
+
+        if (self.bit_king_moves[square as usize].0 & bit_pieces[Piece::King as usize].0) != 0 {
+            return true;
+        }
+
+        false
+    }
+
+    pub fn get_square_of_lowest_value_attacker_of_square(
+        &self,
+        side: Side,
+        square: Square,
+    ) -> Option<Square> {
+        for pawn_capture in [
+            self.bit_pawn_left_captures[side.opponent() as usize][square as usize],
+            self.bit_pawn_right_captures[side.opponent() as usize][square as usize],
+        ] {
+            if (pawn_capture.0 & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0) != 0
+            {
+                return Some(pawn_capture.into());
+            }
+        }
+
+        let mut b1 = BitBoard(
+            self.bit_knight_moves[square as usize].0
+                & self.board.bit_pieces[side as usize][Piece::Knight as usize].0,
+        );
+
+        if b1.0 != 0 {
+            return Some(BitBoard(b1.next_bit()).into());
+        }
+
+        for (piece, bit_moves) in [
+            (Piece::Bishop, self.bit_bishop_moves),
+            (Piece::Rook, self.bit_rook_moves),
+            (Piece::Queen, self.bit_queen_moves),
+        ] {
+            let mut b1 = BitBoard(
+                bit_moves[square as usize].0
+                    & self.board.bit_pieces[side as usize][piece as usize].0,
+            );
+
+            while b1.0 != 0 {
+                let attacking_piece = b1.next_bit();
+
+                if (self.bit_between[attacking_piece as usize][square as usize].0
+                    & self.board.bit_all.0)
+                    == 0
+                {
+                    return Some(BitBoard(attacking_piece).into());
+                }
+            }
+        }
+
+        let mut b1 = BitBoard(
+            self.bit_king_moves[square as usize].0
+                & self.board.bit_pieces[side as usize][Piece::King as usize].0,
+        );
+
+        if b1.0 != 0 {
+            return Some(BitBoard(b1.next_bit()).into());
+        }
+
+        None
     }
 
     fn new() -> Self {

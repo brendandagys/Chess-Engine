@@ -22,6 +22,7 @@ pub const HASH_SCORE: i32 = 100_000_000;
 /// Added to move score so that captures are search right after the hash table.
 pub const CAPTURE_SCORE: i32 = 10_000_000;
 
+// Hash table configuration
 pub const MAX_HASH: usize = 5_000_000;
 pub const HASH_SIZE: usize = 5_000_000;
 

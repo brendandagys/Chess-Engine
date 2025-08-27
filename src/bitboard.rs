@@ -33,9 +33,9 @@ impl BitBoard {
 
     /// Folding trick from chessprogramming.org
     /// https://www.chessprogramming.org/Matt_Taylor
-    fn next_bit(&mut self) -> u8 {
+    pub fn next_bit(&mut self) -> u64 {
         self.0 ^= self.0 - 1;
         let folded = self.0 ^ (self.0 >> 32);
-        LSB_64_TABLE[(folded as usize) * (0x78291ACF >> 26)]
+        LSB_64_TABLE[(folded as usize) * (0x78291ACF >> 26)] as u64
     }
 }
