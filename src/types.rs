@@ -207,7 +207,7 @@ impl Board {
 
             if piece != Piece::Empty {
                 board[square as usize] = piece;
-                hash.update_position_hash_key(side, piece, square);
+                hash.update_position_hash_key_and_lock(side, piece, square);
                 bit_pieces[side as usize][piece as usize].set_bit(square);
                 bit_units[side as usize].set_bit(square);
                 bit_all.set_bit(square);
@@ -225,9 +225,29 @@ impl Board {
 
     pub fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
         self.value[square as usize] = piece;
-        self.hash.update_position_hash_key(side, piece, square);
+        self.hash
+            .update_position_hash_key_and_lock(side, piece, square);
         self.bit_pieces[side as usize][piece as usize].set_bit(square);
         self.bit_units[side as usize].set_bit(square);
         self.bit_all.set_bit(square);
+    }
+
+    fn set_hash_key_and_lock_for_position(&mut self) {
+        self.hash.current_key = 0;
+        self.hash.current_lock = 0;
+
+        for square in Square::iter() {
+            let piece = self.value[square as usize];
+
+            if piece != Piece::Empty {
+                let side = self.bit_units[Side::White as usize]
+                    .is_bit_set(square)
+                    .then(|| Side::White)
+                    .unwrap_or(Side::Black);
+
+                self.hash
+                    .update_position_hash_key_and_lock(side, piece, square);
+            }
+        }
     }
 }

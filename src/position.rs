@@ -517,6 +517,139 @@ impl Position {
         (square_score, king_endgame_score, passed_pawns_score)
     }
 
+    fn new_position(&mut self) {
+        self.piece_material_score = [0; NUM_SIDES];
+        self.pawn_material_score = [0; NUM_SIDES];
+
+        for square in Square::iter() {
+            let piece = self.board.value[square as usize];
+
+            if piece != Piece::Empty {
+                self.board.add_piece(
+                    if self.board.bit_units[Side::White as usize].is_bit_set(square) {
+                        Side::White
+                    } else {
+                        Side::Black
+                    },
+                    piece,
+                    square,
+                );
+            }
+        }
+    }
+
+    fn display_move(from: Square, to: Square) {
+        [from, to].iter().for_each(|&square| {
+            print!(
+                "{}{}",
+                (COLUMN[square as usize] + b'a') as char,
+                (ROW[square as usize] + b'1') as char
+            );
+
+            std::io::Write::flush(&mut std::io::stdout()).unwrap();
+        });
+    }
+
+    fn get_knight_moves() -> [BitBoard; NUM_SQUARES] {
+        let mut bit_knight_moves = [BitBoard(0); NUM_SQUARES];
+
+        for square in Square::iter() {
+            if ROW[square as usize] < 6 && COLUMN[square as usize] < 7 {
+                bit_knight_moves[square as usize].set_bit((square as i32 + 17).try_into().unwrap());
+            }
+            if ROW[square as usize] < 7 && COLUMN[square as usize] < 6 {
+                bit_knight_moves[square as usize].set_bit((square as i32 + 10).try_into().unwrap());
+            }
+            if ROW[square as usize] < 6 && COLUMN[square as usize] > 0 {
+                bit_knight_moves[square as usize].set_bit((square as i32 + 15).try_into().unwrap());
+            }
+            if ROW[square as usize] < 7 && COLUMN[square as usize] > 1 {
+                bit_knight_moves[square as usize].set_bit((square as i32 + 6).try_into().unwrap());
+            }
+            if ROW[square as usize] > 1 && COLUMN[square as usize] < 7 {
+                bit_knight_moves[square as usize].set_bit((square as i32 - 15).try_into().unwrap());
+            }
+            if ROW[square as usize] > 0 && COLUMN[square as usize] < 6 {
+                bit_knight_moves[square as usize].set_bit((square as i32 - 6).try_into().unwrap());
+            }
+            if ROW[square as usize] > 1 && COLUMN[square as usize] > 0 {
+                bit_knight_moves[square as usize].set_bit((square as i32 - 17).try_into().unwrap());
+            }
+            if ROW[square as usize] > 0 && COLUMN[square as usize] > 1 {
+                bit_knight_moves[square as usize].set_bit((square as i32 - 10).try_into().unwrap());
+            }
+        }
+
+        bit_knight_moves
+    }
+
+    fn get_king_moves() -> [BitBoard; NUM_SQUARES] {
+        let mut bit_king_moves = [BitBoard(0); NUM_SQUARES];
+
+        for square in Square::iter() {
+            if COLUMN[square as usize] > 0 {
+                bit_king_moves[square as usize].set_bit((square as i32 - 1).try_into().unwrap());
+            }
+            if COLUMN[square as usize] < 7 {
+                bit_king_moves[square as usize].set_bit((square as i32 + 1).try_into().unwrap());
+            }
+            if ROW[square as usize] > 0 {
+                bit_king_moves[square as usize].set_bit((square as i32 - 8).try_into().unwrap());
+            }
+            if ROW[square as usize] < 7 {
+                bit_king_moves[square as usize].set_bit((square as i32 + 8).try_into().unwrap());
+            }
+            if COLUMN[square as usize] < 7 && ROW[square as usize] < 7 {
+                bit_king_moves[square as usize].set_bit((square as i32 + 9).try_into().unwrap());
+            }
+            if COLUMN[square as usize] > 0 && ROW[square as usize] < 7 {
+                bit_king_moves[square as usize].set_bit((square as i32 + 7).try_into().unwrap());
+            }
+            if COLUMN[square as usize] > 0 && ROW[square as usize] > 0 {
+                bit_king_moves[square as usize].set_bit((square as i32 - 9).try_into().unwrap());
+            }
+            if COLUMN[square as usize] < 7 && ROW[square as usize] > 0 {
+                bit_king_moves[square as usize].set_bit((square as i32 - 7).try_into().unwrap());
+            }
+        }
+
+        bit_king_moves
+    }
+
+    fn get_queen_rook_bishop_moves() -> (
+        [BitBoard; NUM_SQUARES],
+        [BitBoard; NUM_SQUARES],
+        [BitBoard; NUM_SQUARES],
+    ) {
+        let mut bit_queen_moves = [BitBoard(0); NUM_SQUARES];
+        let mut bit_rook_moves = [BitBoard(0); NUM_SQUARES];
+        let mut bit_bishop_moves = [BitBoard(0); NUM_SQUARES];
+
+        for square in Square::iter() {
+            for square_2 in Square::iter() {
+                if square != square_2 {
+                    if NORTH_WEST_DIAGONAL[square as usize]
+                        == NORTH_WEST_DIAGONAL[square_2 as usize]
+                        || NORTH_EAST_DIAGONAL[square as usize]
+                            == NORTH_EAST_DIAGONAL[square_2 as usize]
+                    {
+                        bit_queen_moves[square as usize].set_bit(square_2);
+                        bit_bishop_moves[square as usize].set_bit(square_2);
+                    }
+
+                    if ROW[square as usize] == ROW[square_2 as usize]
+                        || COLUMN[square as usize] == COLUMN[square_2 as usize]
+                    {
+                        bit_queen_moves[square as usize].set_bit(square_2);
+                        bit_rook_moves[square as usize].set_bit(square_2);
+                    }
+                }
+            }
+        }
+
+        (bit_queen_moves, bit_rook_moves, bit_bishop_moves)
+    }
+
     fn new() -> Self {
         let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
 
@@ -543,6 +676,9 @@ impl Position {
 
         let mut first_move = [-1; MAX_PLY];
         first_move[0] = 0;
+
+        let (bit_queen_moves, bit_rook_moves, bit_bishop_moves) =
+            Self::get_queen_rook_bishop_moves();
 
         Self {
             // Dynamic
@@ -571,12 +707,12 @@ impl Position {
             bit_pawn_left_captures,
             bit_pawn_right_captures,
             bit_pawn_defends,
-            bit_pawn_moves: [[BitBoard(0); NUM_SQUARES]; NUM_SIDES],
-            bit_knight_moves: [BitBoard(0); NUM_SQUARES],
-            bit_bishop_moves: [BitBoard(0); NUM_SQUARES],
-            bit_rook_moves: [BitBoard(0); NUM_SQUARES],
-            bit_queen_moves: [BitBoard(0); NUM_SQUARES],
-            bit_king_moves: [BitBoard(0); NUM_SQUARES],
+            bit_pawn_moves: [[BitBoard(0); NUM_SQUARES]; NUM_SIDES], // TODO: Likely not needed
+            bit_knight_moves: Self::get_knight_moves(),
+            bit_bishop_moves,
+            bit_rook_moves,
+            bit_queen_moves,
+            bit_king_moves: Self::get_king_moves(),
             mask_passed,
             mask_path,
             mask,     // TODO: Are these actually needed?
