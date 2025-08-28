@@ -188,13 +188,13 @@ pub struct Move {
     pub from: Square,
     pub to: Square,
     pub promote: Option<Piece>,
-    pub score: usize, // Used when sorting moves. Higher scores are searched first.
+    pub score: isize, // Used when sorting moves. Higher scores are searched first.
 }
 
 #[derive(Clone, Copy)]
 pub struct Game {
-    start: Square,
-    destination: Square,
+    pub from: Square,
+    pub to: Square,
     promote: Option<Piece>,
     capture: Option<Square>,
     fifty: u8,   // Moves since last pawn move or capture (up to 100-ply)

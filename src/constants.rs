@@ -248,3 +248,10 @@ pub const LSB_64_TABLE: [u8; 64] = [
     25, 57, 48, 13, 10, 39,  8, 44,
     20, 47, 38, 22, 17, 37, 36, 26
 ];
+
+pub const PAWN_CAPTURE_SCORE: [i32; 6] = [0, 10, 20, 30, 40, 0];
+pub const KNIGHT_CAPTURE_SCORE: [i32; 6] = [-3, 7, 17, 27, 37, 0];
+pub const BISHOP_CAPTURE_SCORE: [i32; 6] = [-3, 7, 17, 27, 37, 0];
+pub const ROOK_CAPTURE_SCORE: [i32; 6] = [-5, 5, 15, 25, 35, 0];
+pub const QUEEN_CAPTURE_SCORE: [i32; 6] = [-9, 1, 11, 21, 31, 0];
+pub const KING_CAPTURE_SCORE: [i32; 6] = [0, 10, 20, 30, 40, 0];
