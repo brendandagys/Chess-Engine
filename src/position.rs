@@ -872,7 +872,29 @@ impl Position {
         }
     }
 
-    fn generate_moves(&mut self, side: Side) {
+    fn generate_king_captures(&mut self, side: Side, king_square: u8, move_count: &mut isize) {
+        let mut king_captures = BitBoard(
+            self.bit_king_moves[king_square as usize].0
+                & self.board.bit_units[side.opponent() as usize].0,
+        );
+
+        while king_captures.0 != 0 {
+            let square_to = king_captures.next_bit();
+
+            self.add_capture(
+                king_square
+                    .try_into()
+                    .expect("Failed to convert king_square to Square"),
+                square_to
+                    .try_into()
+                    .expect("Failed to convert square_to to Square"),
+                KING_CAPTURE_SCORE[self.board.value[square_to as usize] as usize] as isize,
+                move_count,
+            );
+        }
+    }
+
+    fn generate_moves_and_captures(&mut self, side: Side) {
         let mut left_pawn_captures;
         let mut right_pawn_captures;
         let mut unblocked_pawns;
@@ -988,7 +1010,7 @@ impl Position {
 
             let mut knight_captures = BitBoard(
                 self.bit_knight_moves[square_from as usize].0
-                    & !self.board.bit_units[side.opponent() as usize].0,
+                    & self.board.bit_units[side.opponent() as usize].0,
             );
 
             while knight_captures.0 != 0 {
@@ -1100,25 +1122,7 @@ impl Position {
             let king_square =
                 BitBoard(self.board.bit_pieces[side as usize][Piece::King as usize].0).next_bit();
 
-            let mut king_captures = BitBoard(
-                self.bit_king_moves[king_square as usize].0
-                    & self.board.bit_units[side.opponent() as usize].0,
-            );
-
-            while king_captures.0 != 0 {
-                let square_to = king_captures.next_bit();
-
-                self.add_capture(
-                    king_square
-                        .try_into()
-                        .expect("Failed to convert king_square to Square"),
-                    square_to
-                        .try_into()
-                        .expect("Failed to convert square_to to Square"),
-                    KING_CAPTURE_SCORE[self.board.value[square_to as usize] as usize] as isize,
-                    &mut move_count,
-                );
-            }
+            self.generate_king_captures(side, king_square, &mut move_count);
 
             let mut king_moves =
                 BitBoard(self.bit_king_moves[king_square as usize].0 & !self.board.bit_all.0);
@@ -1139,6 +1143,149 @@ impl Position {
 
             self.first_move[self.ply + 1] = move_count;
         }
+    }
+
+    pub fn generate_captures(&mut self, side: Side) {
+        let mut move_count = self.first_move[self.ply];
+
+        // Pawns
+        let mut left_pawn_captures;
+        let mut right_pawn_captures;
+
+        match side {
+            Side::White => {
+                left_pawn_captures = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
+                            >> 7),
+                );
+                right_pawn_captures = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
+                            >> 9),
+                );
+            }
+            Side::Black => {
+                left_pawn_captures = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
+                            << 9),
+                );
+                right_pawn_captures = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
+                            << 7),
+                );
+            }
+        }
+
+        while left_pawn_captures.0 != 0 {
+            let square_from = left_pawn_captures.next_bit();
+            let mut victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+
+            self.add_capture(
+                square_from
+                    .try_into()
+                    .expect("Failed to convert square_from to Square"),
+                victim
+                    .try_into()
+                    .expect("Failed to convert victim to Square"),
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
+                &mut move_count,
+            );
+        }
+
+        while right_pawn_captures.0 != 0 {
+            let square_from = right_pawn_captures.next_bit();
+            let mut victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+
+            self.add_capture(
+                square_from
+                    .try_into()
+                    .expect("Failed to convert square_from to Square"),
+                victim
+                    .try_into()
+                    .expect("Failed to convert victim to Square"),
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
+                &mut move_count,
+            );
+        }
+
+        // Knights
+        let mut knights = BitBoard(self.board.bit_pieces[side as usize][Piece::Knight as usize].0);
+
+        while knights.0 != 0 {
+            let square_from = knights.next_bit();
+
+            let mut knight_captures = BitBoard(
+                self.bit_knight_moves[square_from as usize].0
+                    & self.board.bit_units[side.opponent() as usize].0,
+            );
+
+            while knight_captures.0 != 0 {
+                let square_to = knight_captures.next_bit();
+
+                self.add_capture(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to
+                        .try_into()
+                        .expect("Failed to convert square_to to Square"),
+                    KNIGHT_CAPTURE_SCORE[self.board.value[square_to as usize] as usize] as isize,
+                    &mut move_count,
+                );
+            }
+        }
+
+        // Bishops, rooks, queens
+        for (piece, bit_moves, capture_score) in [
+            (Piece::Bishop, self.bit_bishop_moves, BISHOP_CAPTURE_SCORE),
+            (Piece::Rook, self.bit_rook_moves, ROOK_CAPTURE_SCORE),
+            (Piece::Queen, self.bit_queen_moves, QUEEN_CAPTURE_SCORE),
+        ] {
+            let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
+
+            while pieces.0 != 0 {
+                let attacking_square = pieces.next_bit();
+
+                let mut possible_captures = BitBoard(
+                    bit_moves[attacking_square as usize].0
+                        & self.board.bit_units[side.opponent() as usize].0,
+                );
+
+                while possible_captures.0 != 0 {
+                    let square_to = possible_captures.next_bit();
+
+                    if (self.bit_between[attacking_square as usize][square_to as usize].0
+                        & self.board.bit_all.0)
+                        == 0
+                    {
+                        self.add_capture(
+                            attacking_square
+                                .try_into()
+                                .expect("Failed to convert square_from to Square"),
+                            square_to
+                                .try_into()
+                                .expect("Failed to convert square_to to Square"),
+                            capture_score[self.board.value[square_to as usize] as usize] as isize,
+                            &mut move_count,
+                        );
+                    }
+
+                    possible_captures.0 &=
+                        self.bit_after[attacking_square as usize][square_to as usize].0;
+                }
+            }
+        }
+
+        // King
+        let king_square =
+            BitBoard(self.board.bit_pieces[side as usize][Piece::King as usize].0).next_bit();
+
+        self.generate_king_captures(side, king_square, &mut move_count);
+
+        self.first_move[self.ply + 1] = move_count;
     }
 
     fn new() -> Self {
