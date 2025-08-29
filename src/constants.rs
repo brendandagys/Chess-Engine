@@ -226,7 +226,7 @@ pub const PASSED_SCORE: [i32; NUM_SQUARES] = [
 ///  3: 0011
 /// 15: 1111
 #[rustfmt::skip]
-pub const CASTLE_MASK: [i32; NUM_SQUARES] = [
+pub const CASTLE_MASK: [u8; NUM_SQUARES] = [
 	  13, 15, 15, 15, 12, 15, 15, 14,
 	  15, 15, 15, 15, 15, 15, 15, 15,
 	  15, 15, 15, 15, 15, 15, 15, 15,
@@ -255,3 +255,5 @@ pub const BISHOP_CAPTURE_SCORE: [i32; 6] = [-3, 7, 17, 27, 37, 0];
 pub const ROOK_CAPTURE_SCORE: [i32; 6] = [-5, 5, 15, 25, 35, 0];
 pub const QUEEN_CAPTURE_SCORE: [i32; 6] = [-9, 1, 11, 21, 31, 0];
 pub const KING_CAPTURE_SCORE: [i32; 6] = [0, 10, 20, 30, 40, 0];
+
+pub const REVERSE_SQUARE: [i32; NUM_SIDES] = [-8, 8];

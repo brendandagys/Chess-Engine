@@ -1,11 +1,12 @@
 use crate::{
     bitboard::BitBoard,
     constants::{
-        BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, COLUMN, FLIPPED_BOARD_SQUARE,
-        GAME_STACK, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE, KNIGHT_CAPTURE_SCORE,
-        KNIGHT_SCORE, MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL,
-        NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE,
-        QUEEN_CAPTURE_SCORE, QUEEN_SCORE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
+        BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
+        FLIPPED_BOARD_SQUARE, GAME_STACK, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE,
+        KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL,
+        NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES, PASSED_SCORE,
+        PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE, QUEEN_SCORE, REVERSE_SQUARE,
+        ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     types::{Board, Game, Move, Piece, Side, Square},
 };
@@ -1119,8 +1120,7 @@ impl Position {
             }
 
             // King
-            let king_square =
-                BitBoard(self.board.bit_pieces[side as usize][Piece::King as usize].0).next_bit();
+            let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
 
             self.generate_king_captures(side, king_square, &mut move_count);
 
@@ -1280,12 +1280,245 @@ impl Position {
         }
 
         // King
-        let king_square =
-            BitBoard(self.board.bit_pieces[side as usize][Piece::King as usize].0).next_bit();
+        let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
 
         self.generate_king_captures(side, king_square, &mut move_count);
 
         self.first_move[self.ply + 1] = move_count;
+    }
+
+    pub fn make_move(&mut self, from: Square, to: Square) -> bool {
+        // Check for castling
+        if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
+            if self.is_square_attacked_by_side(self.side.opponent(), from) {
+                return false;
+            }
+
+            if to == Square::G1 {
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::F1) {
+                    return false;
+                }
+
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::H1, Square::F1);
+            } else if to == Square::C1 {
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::D1) {
+                    return false;
+                }
+
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::A1, Square::D1);
+            } else if to == Square::G8 {
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::F8) {
+                    return false;
+                }
+
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::H8, Square::F8);
+            } else if to == Square::C8 {
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::D8) {
+                    return false;
+                }
+
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::A8, Square::D8);
+            }
+        }
+
+        let mut game = self.game_list[self.ply_from_start_of_game].unwrap_or(Game::new());
+
+        game.from = from;
+        game.to = to;
+        game.capture = self.board.value[to as usize];
+        game.fifty = self.fifty;
+        game.castle = self.castle;
+        game.hash = self.board.hash.current_key;
+        game.lock = self.board.hash.current_lock;
+
+        // Update the castle permissions
+        self.castle &= CASTLE_MASK[from as usize] & CASTLE_MASK[to as usize];
+
+        self.ply += 1;
+        self.ply_from_start_of_game += 1;
+        self.fifty += 1;
+
+        if self.board.value[from as usize] == Piece::Pawn {
+            self.fifty = 0;
+
+            // Handle en passant
+            if self.board.value[to as usize] == Piece::Empty
+                && COLUMN[from as usize] != COLUMN[to as usize]
+            {
+                self.board.remove_piece(
+                    self.side.opponent(),
+                    Piece::Pawn,
+                    (to as i32 + REVERSE_SQUARE[self.side as usize])
+                        .try_into()
+                        .expect("Failed to convert square to Square"),
+                );
+            }
+        }
+
+        // Handle regular (non-en passant) captures
+        if self.board.value[to as usize] != Piece::Empty {
+            self.fifty = 0;
+
+            self.board
+                .remove_piece(self.side.opponent(), self.board.value[to as usize], to);
+        }
+
+        // Handle promotions
+        if self.board.value[from as usize] == Piece::Pawn && [0, 7].contains(&ROW[to as usize]) {
+            self.board.remove_piece(self.side, Piece::Pawn, from);
+            self.board.add_piece(self.side, Piece::Queen, to);
+
+            game.promote = Some(Piece::Queen);
+        } else {
+            self.board
+                .update_piece(self.side, self.board.value[from as usize], from, to);
+
+            game.promote = None;
+        }
+
+        let original_side = self.side;
+
+        self.side = self.side.opponent();
+        self.other_side = self.other_side.opponent();
+
+        // Update the game list entry
+        self.game_list[self.ply_from_start_of_game] = Some(game);
+
+        let king_square = self.board.bit_pieces[original_side as usize][Piece::King as usize]
+            .next_bit()
+            .try_into()
+            .expect("Failed to convert square to Square");
+
+        if self.is_square_attacked_by_side(original_side.opponent(), king_square) {
+            self.take_back_move();
+            return false;
+        }
+
+        true
+    }
+
+    fn take_back_move(&mut self) {
+        self.side = self.side.opponent();
+        self.other_side = self.other_side.opponent();
+        self.ply -= 1;
+        self.ply_from_start_of_game -= 1;
+
+        let game = self.game_list[self.ply_from_start_of_game].expect("No game to take back");
+
+        let from = game.from;
+        let to = game.to;
+        let castle_permissions = game.castle;
+        let fifty = game.fifty;
+
+        // En passant
+        if self.board.value[to as usize] == Piece::Pawn
+            && game.capture == Piece::Empty
+            && COLUMN[from as usize] != COLUMN[to as usize]
+        {
+            self.board.add_piece(
+                self.side.opponent(),
+                Piece::Pawn,
+                (to as i32 + REVERSE_SQUARE[self.side as usize])
+                    .try_into()
+                    .expect("Failed to convert square to Square"),
+            );
+        }
+
+        // Promotion
+        if game.promote.is_some() {
+            self.board.add_piece(self.side, Piece::Pawn, from);
+            self.board.remove_piece(self.side, Piece::Queen, to);
+        } else {
+            // Regular undo of a non-promotion move
+            self.board
+                .update_piece(self.side, self.board.value[to as usize], to, from);
+        }
+
+        // Replace captured piece
+        if game.capture != Piece::Empty {
+            self.board.add_piece(self.side.opponent(), game.capture, to);
+        }
+
+        // Castling
+        if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
+            if to == Square::G1 {
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::F1, Square::H1);
+            } else if to == Square::C1 {
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::D1, Square::A1);
+            } else if to == Square::G8 {
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::F8, Square::H8);
+            } else if to == Square::C8 {
+                self.board
+                    .update_piece(self.side, Piece::Rook, Square::D8, Square::A8);
+            }
+        }
+    }
+
+    fn make_recapture(&mut self, from: Square, to: Square) -> bool {
+        let mut game = self.game_list[self.ply_from_start_of_game].unwrap_or(Game::new());
+
+        game.from = from;
+        game.to = to;
+        game.capture = self.board.value[to as usize];
+
+        // Update the game list entry
+        self.game_list[self.ply_from_start_of_game] = Some(game);
+
+        self.ply += 1;
+        self.ply_from_start_of_game += 1;
+
+        self.board
+            .remove_piece(self.side.opponent(), self.board.value[to as usize], to);
+        self.board
+            .update_piece(self.side, self.board.value[from as usize], from, to);
+
+        let original_side = self.side;
+        let original_opponent_side = self.side.opponent();
+
+        self.side = self.side.opponent();
+        self.other_side = self.other_side.opponent();
+
+        // Undo upon check
+        if self.is_square_attacked_by_side(
+            original_opponent_side,
+            self.board.bit_pieces[original_side as usize][Piece::King as usize].into(),
+        ) {
+            self.take_back_recapture();
+            return false;
+        }
+
+        true
+    }
+
+    fn take_back_recapture(&mut self) {
+        let original_side = self.side;
+        let original_opponent_side = self.side.opponent();
+
+        self.side = self.side.opponent();
+        self.other_side = self.other_side.opponent();
+
+        self.ply -= 1;
+        self.ply_from_start_of_game -= 1;
+
+        let game = self.game_list[self.ply_from_start_of_game].expect("No game to unmake");
+
+        let from = game.from;
+        let to = game.to;
+
+        self.board.update_piece(
+            original_opponent_side,
+            self.board.value[to as usize],
+            to,
+            from,
+        );
+        self.board.add_piece(original_side, game.capture, to);
     }
 
     fn new() -> Self {

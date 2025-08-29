@@ -44,7 +44,7 @@ impl Square {
 impl From<BitBoard> for Square {
     fn from(bitboard: BitBoard) -> Self {
         if bitboard.0.count_ones() != 1 {
-            panic!("BitBoard must have exactly one bit set to convert to Square");
+            panic!("BitBoard must have exactly one bit set to convert to Square"); // TODO: Remove panic and use TryFrom
         }
 
         let index = bitboard.0.trailing_zeros() as u8;
@@ -195,12 +195,27 @@ pub struct Move {
 pub struct Game {
     pub from: Square,
     pub to: Square,
-    promote: Option<Piece>,
-    capture: Option<Square>,
-    fifty: u8,   // Moves since last pawn move or capture (up to 100-ply)
-    castle: u8,  // Castle permissions
-    hash: usize, // Number to help test for repetition
-    lock: usize, // Number to help test for repetition
+    pub promote: Option<Piece>,
+    pub capture: Piece, // Can be an empty piece
+    pub fifty: u8,      // Moves since last pawn move or capture (up to 100-ply)
+    pub castle: u8,     // Castle permissions
+    pub hash: u64,      // Number to help test for repetition
+    pub lock: u64,      // Number to help test for repetition
+}
+
+impl Game {
+    pub fn new() -> Self {
+        Self {
+            from: Square::A1,
+            to: Square::A1,
+            promote: None,
+            capture: Piece::Empty,
+            fifty: 0,
+            castle: 0,
+            hash: 0,
+            lock: 0,
+        }
+    }
 }
 
 pub struct Board {
@@ -208,7 +223,7 @@ pub struct Board {
     pub bit_pieces: [[BitBoard; NUM_PIECE_TYPES]; NUM_SIDES], // [side][piece]
     pub bit_units: [BitBoard; NUM_SIDES],                     // [side]
     pub bit_all: BitBoard,
-    hash: Hash,
+    pub hash: Hash,
 }
 
 impl Board {
@@ -252,6 +267,35 @@ impl Board {
         self.bit_all.set_bit(square);
     }
 
+    pub fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        // XOR will remove the piece
+        self.hash
+            .update_position_hash_key_and_lock(side, piece, square);
+        self.value[square as usize] = Piece::Empty;
+        self.bit_pieces[side as usize][piece as usize].clear_bit(square);
+        self.bit_units[side as usize].clear_bit(square);
+        self.bit_all.clear_bit(square);
+    }
+
+    pub fn update_piece(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
+        self.bit_units[side as usize].clear_bit(from);
+        self.bit_units[side as usize].set_bit(to);
+
+        self.bit_all.clear_bit(from);
+        self.bit_all.set_bit(to);
+
+        self.hash
+            .update_position_hash_key_and_lock(side, piece, from);
+        self.hash.update_position_hash_key_and_lock(side, piece, to);
+
+        self.value[from as usize] = Piece::Empty;
+        self.value[to as usize] = piece;
+
+        self.bit_pieces[side as usize][piece as usize].clear_bit(from);
+        self.bit_pieces[side as usize][piece as usize].set_bit(to);
+    }
+
+    // Initializes the hashmap for a position
     fn set_hash_key_and_lock_for_position(&mut self) {
         self.hash.current_key = 0;
         self.hash.current_lock = 0;
