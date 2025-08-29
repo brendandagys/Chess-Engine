@@ -1,11 +1,11 @@
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
-        FLIPPED_BOARD_SQUARE, GAME_STACK, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE,
-        KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL,
-        NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES, PASSED_SCORE,
-        PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE, QUEEN_SCORE, REVERSE_SQUARE,
-        ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
+        FLIPPED_BOARD_SQUARE, GAME_STACK, ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE,
+        KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE, KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE,
+        MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES,
+        NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE,
+        QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     types::{BitBoard, Board, Game, Move, Piece, Side, Square},
 };
@@ -697,7 +697,7 @@ impl Position {
         );
 
         while b1.0 != 0 {
-            let attacking_piece = b1.next_bit();
+            let attacking_piece = b1.next_bit_mut();
 
             if (self.bit_between[attacking_piece as usize][square as usize].0
                 & self.board.bit_all.0)
@@ -729,7 +729,7 @@ impl Position {
             }
         }
 
-        let mut b1 = BitBoard(
+        let b1 = BitBoard(
             self.bit_knight_moves[square as usize].0
                 & self.board.bit_pieces[side as usize][Piece::Knight as usize].0,
         );
@@ -749,7 +749,7 @@ impl Position {
             );
 
             while b1.0 != 0 {
-                let attacking_piece = b1.next_bit();
+                let attacking_piece = b1.next_bit_mut();
 
                 if (self.bit_between[attacking_piece as usize][square as usize].0
                     & self.board.bit_all.0)
@@ -760,7 +760,7 @@ impl Position {
             }
         }
 
-        let mut b1 = BitBoard(
+        let b1 = BitBoard(
             self.bit_king_moves[square as usize].0
                 & self.board.bit_pieces[side as usize][Piece::King as usize].0,
         );
@@ -879,7 +879,7 @@ impl Position {
         );
 
         while king_captures.0 != 0 {
-            let square_to = king_captures.next_bit();
+            let square_to = king_captures.next_bit_mut();
 
             self.add_capture(
                 king_square
@@ -941,8 +941,8 @@ impl Position {
         }
 
         while left_pawn_captures.0 != 0 {
-            let square_from = left_pawn_captures.next_bit();
-            let mut victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let square_from = left_pawn_captures.next_bit_mut();
+            let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
 
             self.add_capture(
                 square_from
@@ -957,8 +957,8 @@ impl Position {
         }
 
         while right_pawn_captures.0 != 0 {
-            let square_from = right_pawn_captures.next_bit();
-            let mut victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let square_from = right_pawn_captures.next_bit_mut();
+            let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
 
             self.add_capture(
                 square_from
@@ -973,7 +973,7 @@ impl Position {
         }
 
         while unblocked_pawns.0 != 0 {
-            let square_from = unblocked_pawns.next_bit();
+            let square_from = unblocked_pawns.next_bit_mut();
             let to = self.pawn_plus_index[side as usize][square_from as usize];
 
             self.add_move(
@@ -1006,7 +1006,7 @@ impl Position {
         let mut knights = BitBoard(self.board.bit_pieces[side as usize][Piece::Knight as usize].0);
 
         while knights.0 != 0 {
-            let square_from = knights.next_bit();
+            let square_from = knights.next_bit_mut();
 
             let mut knight_captures = BitBoard(
                 self.bit_knight_moves[square_from as usize].0
@@ -1014,7 +1014,7 @@ impl Position {
             );
 
             while knight_captures.0 != 0 {
-                let square_to = knight_captures.next_bit();
+                let square_to = knight_captures.next_bit_mut();
 
                 self.add_capture(
                     square_from
@@ -1032,7 +1032,7 @@ impl Position {
                 BitBoard(self.bit_knight_moves[square_from as usize].0 & !self.board.bit_all.0);
 
             while knight_moves.0 != 0 {
-                let square_to = knight_moves.next_bit();
+                let square_to = knight_moves.next_bit_mut();
 
                 self.add_move(
                     square_from
@@ -1054,7 +1054,7 @@ impl Position {
                 let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
 
                 while pieces.0 != 0 {
-                    let square_from = pieces.next_bit();
+                    let square_from = pieces.next_bit_mut();
                     let mut possible_moves = BitBoard(bit_moves[square_from as usize].0);
 
                     // Remove squares blocked by friendly units and squares after them
@@ -1062,7 +1062,7 @@ impl Position {
                         BitBoard(possible_moves.0 & self.board.bit_units[side as usize].0);
 
                     while moves_to_self_occupied_squares.0 != 0 {
-                        let square_to = moves_to_self_occupied_squares.next_bit();
+                        let square_to = moves_to_self_occupied_squares.next_bit_mut();
 
                         moves_to_self_occupied_squares.0 &=
                             self.bit_after[square_from as usize][square_to as usize].0;
@@ -1076,7 +1076,7 @@ impl Position {
                     );
 
                     while possible_captures.0 != 0 {
-                        let square_to = possible_captures.next_bit();
+                        let square_to = possible_captures.next_bit_mut();
 
                         if (self.bit_between[square_from as usize][square_to as usize].0
                             & self.board.bit_all.0)
@@ -1103,7 +1103,7 @@ impl Position {
                     }
 
                     while possible_moves.0 != 0 {
-                        let square_to = possible_moves.next_bit();
+                        let square_to = possible_moves.next_bit_mut();
 
                         self.add_move(
                             square_from
@@ -1127,7 +1127,7 @@ impl Position {
                 BitBoard(self.bit_king_moves[king_square as usize].0 & !self.board.bit_all.0);
 
             while king_moves.0 != 0 {
-                let square_to = king_moves.next_bit();
+                let square_to = king_moves.next_bit_mut();
 
                 self.add_move(
                     king_square
@@ -1179,8 +1179,8 @@ impl Position {
         }
 
         while left_pawn_captures.0 != 0 {
-            let square_from = left_pawn_captures.next_bit();
-            let mut victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let square_from = left_pawn_captures.next_bit_mut();
+            let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
 
             self.add_capture(
                 square_from
@@ -1195,8 +1195,8 @@ impl Position {
         }
 
         while right_pawn_captures.0 != 0 {
-            let square_from = right_pawn_captures.next_bit();
-            let mut victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let square_from = right_pawn_captures.next_bit_mut();
+            let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
 
             self.add_capture(
                 square_from
@@ -1214,7 +1214,7 @@ impl Position {
         let mut knights = BitBoard(self.board.bit_pieces[side as usize][Piece::Knight as usize].0);
 
         while knights.0 != 0 {
-            let square_from = knights.next_bit();
+            let square_from = knights.next_bit_mut();
 
             let mut knight_captures = BitBoard(
                 self.bit_knight_moves[square_from as usize].0
@@ -1222,7 +1222,7 @@ impl Position {
             );
 
             while knight_captures.0 != 0 {
-                let square_to = knight_captures.next_bit();
+                let square_to = knight_captures.next_bit_mut();
 
                 self.add_capture(
                     square_from
@@ -1246,7 +1246,7 @@ impl Position {
             let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
 
             while pieces.0 != 0 {
-                let attacking_square = pieces.next_bit();
+                let attacking_square = pieces.next_bit_mut();
 
                 let mut possible_captures = BitBoard(
                     bit_moves[attacking_square as usize].0
@@ -1254,7 +1254,7 @@ impl Position {
                 );
 
                 while possible_captures.0 != 0 {
-                    let square_to = possible_captures.next_bit();
+                    let square_to = possible_captures.next_bit_mut();
 
                     if (self.bit_between[attacking_square as usize][square_to as usize].0
                         & self.board.bit_all.0)
@@ -1280,9 +1280,7 @@ impl Position {
 
         // King
         let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
-
         self.generate_king_captures(side, king_square, &mut move_count);
-
         self.first_move[self.ply + 1] = move_count;
     }
 
@@ -1518,6 +1516,153 @@ impl Position {
             from,
         );
         self.board.add_piece(original_side, game.capture, to);
+    }
+
+    fn evaluate_pawn(
+        &self,
+        side: Side,
+        square: Square,
+        kingside_pawns: &mut i32,
+        queenside_pawns: &mut i32,
+    ) -> i32 {
+        let mut score: i32 = 0;
+
+        if (self.mask_passed[side as usize][square as usize].0
+            & self.board.bit_pieces[side.opponent() as usize][Piece::Pawn as usize].0)
+            == 0
+            && self.mask_path[side as usize][square as usize].0
+                & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                == 0
+        {
+            score += self.passed_pawns_score[side as usize][square as usize];
+        }
+
+        if self.mask_isolated[square as usize].0
+            & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+            == 0
+        {
+            score += ISOLATED_PAWN_SCORE // Is negative
+        }
+
+        *kingside_pawns += KINGSIDE_DEFENSE[side as usize][square as usize];
+        *queenside_pawns += QUEENSIDE_DEFENSE[side as usize][square as usize];
+
+        score
+    }
+
+    fn evaluate_rook(&self, side: Side, square: Square) -> i32 {
+        if self.mask_column[square as usize].0
+            & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+            == 0
+        {
+            if self.mask_column[square as usize].0
+                & self.board.bit_pieces[side.opponent() as usize][Piece::Pawn as usize].0
+                == 0
+            {
+                return 20;
+            }
+
+            return 10;
+        }
+
+        0
+    }
+
+    /// Adds a score for each unit on the board.
+    /// Optionally adds a score for king position if opponent has a queen.
+    /// Returns side-to-move's score minus opponent's score.
+    fn evaluate_position(&self) -> i32 {
+        let mut score = [0, 0];
+
+        let mut queenside_pawns = [0, 0];
+        let mut kingside_pawns = [0, 0];
+
+        for side in Side::iter() {
+            // Pawns
+            let mut pawns = self.board.bit_pieces[side as usize][Piece::Pawn as usize];
+
+            while pawns.0 != 0 {
+                let pawn_square = pawns.next_bit_mut();
+
+                score[side as usize] += self.square_score[side as usize][Piece::Pawn as usize]
+                    [pawn_square as usize]
+                    + self.evaluate_pawn(
+                        side,
+                        pawn_square
+                            .try_into()
+                            .expect("Failed to convert pawn u8 to Square"),
+                        &mut kingside_pawns[side as usize],
+                        &mut queenside_pawns[side as usize],
+                    );
+            }
+
+            // Knights
+            let mut knights = self.board.bit_pieces[side as usize][Piece::Knight as usize];
+
+            while knights.0 != 0 {
+                let knight_square = knights.next_bit_mut();
+
+                score[side as usize] += self.square_score[side as usize][Piece::Knight as usize]
+                    [knight_square as usize];
+            }
+
+            // Bishops
+            let mut bishops = self.board.bit_pieces[side as usize][Piece::Bishop as usize];
+
+            while bishops.0 != 0 {
+                let bishop_square = bishops.next_bit_mut();
+
+                score[side as usize] += self.square_score[side as usize][Piece::Bishop as usize]
+                    [bishop_square as usize];
+            }
+
+            // Rooks
+            let mut rooks = self.board.bit_pieces[side as usize][Piece::Rook as usize];
+
+            while rooks.0 != 0 {
+                let rook_square = rooks.next_bit_mut();
+
+                score[side as usize] += self.square_score[side as usize][Piece::Rook as usize]
+                    [rook_square as usize]
+                    + self.evaluate_rook(
+                        side,
+                        rook_square
+                            .try_into()
+                            .expect("Failed to convert rook u8 to Square"),
+                    );
+            }
+
+            // Queens (can be multiple after promotions)
+            let mut queens = self.board.bit_pieces[side as usize][Piece::Queen as usize];
+
+            while queens.0 != 0 {
+                let queen_square = queens.next_bit_mut();
+
+                score[side as usize] +=
+                    self.square_score[side as usize][Piece::Queen as usize][queen_square as usize];
+            }
+
+            // King
+            let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
+
+            if self.board.bit_pieces[side.opponent() as usize][Piece::Queen as usize].0 == 0 {
+                score[side as usize] += self.king_endgame_score[side as usize][king_square as usize]
+            } else {
+                if self.board.bit_pieces[side as usize][Piece::King as usize].0
+                    & self.mask_kingside.0
+                    != 0
+                {
+                    score[side as usize] += kingside_pawns[king_square as usize]
+                } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
+                    & self.mask_queenside.0
+                    != 0
+                {
+                    score[side as usize] += queenside_pawns[king_square as usize]
+                }
+            }
+        }
+
+        score[0] - score[1]
     }
 
     fn new() -> Self {

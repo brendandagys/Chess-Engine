@@ -37,10 +37,16 @@ impl BitBoard {
     /// Returns the square index (0-63) of the least significant bit that is set
     /// Folding trick from chessprogramming.org
     /// https://www.chessprogramming.org/Matt_Taylor
-    pub fn next_bit(&mut self) -> u8 {
+    pub fn next_bit_mut(&mut self) -> u8 {
         self.0 ^= self.0 - 1;
         let folded = self.0 ^ (self.0 >> 32);
         LSB_64_TABLE[(folded as usize) * (0x78291ACF >> 26)]
+    }
+
+    /// Returns the next bit, without mutating the original
+    pub fn next_bit(&self) -> u8 {
+        let mut copy = self.clone();
+        copy.next_bit_mut()
     }
 }
 
