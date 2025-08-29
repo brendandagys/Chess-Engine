@@ -1,5 +1,4 @@
 use crate::{
-    bitboard::BitBoard,
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
         FLIPPED_BOARD_SQUARE, GAME_STACK, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE,
@@ -8,7 +7,7 @@ use crate::{
         PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE, QUEEN_SCORE, REVERSE_SQUARE,
         ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
-    types::{Board, Game, Move, Piece, Side, Square},
+    types::{BitBoard, Board, Game, Move, Piece, Side, Square},
 };
 
 pub struct Position {

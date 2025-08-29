@@ -1,4 +1,3 @@
-pub mod bitboard;
 pub mod constants;
 pub mod hash;
 pub mod position;
