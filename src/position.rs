@@ -1,3 +1,5 @@
+use std::panic;
+
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
@@ -1845,7 +1847,7 @@ impl Position {
             && self.ply > 1
         {
             self.stop_search = true;
-            // longjmp(env, 0);
+            panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
         }
     }
 
@@ -2033,15 +2035,6 @@ impl Position {
     pub fn think(&mut self) {
         self.stop_search = false;
 
-        // setjmp(env);
-
-        if self.stop_search {
-            while self.ply > 0 {
-                self.take_back_move();
-                return;
-            }
-        }
-
         if !self.fixed_time {
             // Halve allotted time for check-evasion or recapture moves
             if self.is_square_attacked_by_side(
@@ -2080,7 +2073,23 @@ impl Position {
                 }
             }
 
-            let score = self.search(-10000, 10000, depth);
+            let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                self.search(-10000, 10000, depth)
+            })) {
+                Ok(score) => score,
+                Err(panic_payload) => {
+                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
+                        if *msg == "TimeExhausted" {
+                            while self.ply > 0 {
+                                self.take_back_move();
+                            }
+                            return;
+                        }
+                    }
+
+                    panic::resume_unwind(panic_payload);
+                }
+            };
 
             print!(
                 "{:>3} {:>8} {:>6} {}",
