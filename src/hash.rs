@@ -53,9 +53,9 @@ impl Hash {
     }
 
     /// Add an entry to the hash table, possibly overwriting
-    pub fn update_position_best_move(&mut self, side: usize, move_: Move) {
+    pub fn update_position_best_move(&mut self, side: Side, move_: Move) {
         let index = (self.current_key as usize) % MAX_HASH;
-        let entry = &mut self.hash_tables[side].positions[index];
+        let entry = &mut self.hash_tables[side as usize].positions[index];
 
         entry.hash_lock = self.current_lock;
         entry.from = move_.from;
@@ -72,19 +72,27 @@ impl Hash {
         }
     }
 
-    pub fn lookup(&mut self, side: usize) -> Option<(Square, Square)> {
-        if let Some(table) = self.hash_tables.get(side) {
+    pub fn lookup(
+        &mut self,
+        side: Side,
+        hash_from: &mut Option<Square>,
+        hash_to: &mut Option<Square>,
+    ) -> bool {
+        if let Some(table) = self.hash_tables.get(side as usize) {
             let key = (self.current_key as usize) % MAX_HASH;
             let entry = table.positions[key];
 
             if entry.hash_lock != self.current_lock {
                 self.collisions += 1;
-                return None;
+                return false;
             }
 
-            return Some((entry.from, entry.to));
+            *hash_from = Some(entry.from);
+            *hash_to = Some(entry.to);
+
+            return true;
         }
 
-        None
+        false
     }
 }

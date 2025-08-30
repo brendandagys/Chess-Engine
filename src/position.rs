@@ -1,13 +1,14 @@
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
-        FLIPPED_BOARD_SQUARE, GAME_STACK, ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE,
+        FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE, ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE,
         KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE, KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE,
         MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES,
         NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE,
         QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     types::{BitBoard, Board, Game, Move, Piece, Side, Square},
+    utils::get_time,
 };
 
 pub struct Position {
@@ -25,6 +26,17 @@ pub struct Position {
     piece_material_score: [usize; NUM_SIDES],
     castle: u8, // Castle permissions
     turn: Side,
+    stop_search: bool,
+    best_move_from: Option<Square>, // Found from the search/hash
+    best_move_to: Option<Square>,   // Found from the search/hash
+    hash_from: Option<Square>,
+    hash_to: Option<Square>,
+    start_time: u64,
+    stop_time: u64,
+    max_time: u8,
+    fixed_time: bool,
+    max_depth: u16,
+    fixed_depth: bool,
     // STATIC
     side: Side,
     other_side: Side,
@@ -714,6 +726,7 @@ impl Position {
         false
     }
 
+    /// Returns the square of the lowest attacker of the given side
     pub fn get_square_of_lowest_value_attacker_of_square(
         &self,
         side: Side,
@@ -1284,6 +1297,8 @@ impl Position {
         self.first_move[self.ply + 1] = move_count;
     }
 
+    /// Make a move and return success state.
+    /// If unsuccessful, the move will be undone.
     pub fn make_move(&mut self, from: Square, to: Square) -> bool {
         // Check for castling
         if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
@@ -1665,6 +1680,436 @@ impl Position {
         score[0] - score[1]
     }
 
+    fn set_hash_move(&mut self) {
+        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
+            if let Some(ref mut move_) = self.move_list[i as usize] {
+                if move_.from == self.best_move_from.unwrap()
+                    && move_.to == self.best_move_to.unwrap()
+                {
+                    move_.score = HASH_SCORE as isize;
+                    return;
+                }
+            }
+        }
+    }
+
+    fn display_principal_variation(&mut self, depth: u16) {
+        self.best_move_from = self.hash_from;
+        self.best_move_to = self.hash_to;
+
+        for _ in 0..depth {
+            if !self
+                .board
+                .hash
+                .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
+            {
+                break;
+            }
+
+            print!(" ");
+            Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
+            self.make_move(self.hash_from.unwrap(), self.hash_to.unwrap());
+        }
+
+        while self.ply > 0 {
+            self.take_back_move();
+        }
+    }
+
+    fn recapture_search(&mut self, mut from: Square, to: Square) -> i32 {
+        let mut score = [0; 12];
+        let mut capture_count = 0;
+        let mut transaction_count = 0;
+
+        // Even indexes contain opponent's captured piece values
+        score[0] = self.board.value[to as usize].value();
+        score[1] = self.board.value[from as usize].value();
+
+        let mut total_score = 0;
+
+        while capture_count < 10 {
+            if !self.make_recapture(from, to) {
+                break;
+            }
+
+            capture_count += 1;
+            transaction_count += 1;
+            self.nodes += 1;
+
+            let lowest_value_attacking_square =
+                // `make_recapture()` will toggle the side
+                self.get_square_of_lowest_value_attacker_of_square(self.side, to);
+
+            match lowest_value_attacking_square {
+                Some(square) => {
+                    score[capture_count + 1] = self.board.value[square as usize].value();
+
+                    // Stop if capturing piece value is more that that of the captured piece + next attacker
+                    if score[capture_count] > score[capture_count - 1] + score[capture_count + 1] {
+                        capture_count -= 1;
+                        break;
+                    }
+
+                    from = square;
+                }
+                None => {
+                    break;
+                }
+            }
+        }
+
+        // Pruning
+        while capture_count > 1 {
+            if score[capture_count - 1] >= score[capture_count - 2] {
+                capture_count -= 2;
+            } else {
+                break;
+            }
+        }
+
+        for i in 0..capture_count {
+            total_score += if i % 2 == 0 { score[i] } else { -score[i] };
+        }
+
+        while transaction_count > 0 {
+            self.take_back_recapture();
+            transaction_count -= 1;
+        }
+
+        total_score
+    }
+
+    fn capture_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
+        self.nodes += 1;
+        let score = self.evaluate_position();
+
+        if score > alpha {
+            if score >= beta {
+                return beta;
+            }
+
+            alpha = score;
+        } else if score + Piece::Queen.value() < alpha {
+            return alpha;
+        }
+
+        let mut score = 0;
+        let mut best_move_index = 0;
+        let mut best_score = 0;
+
+        self.generate_captures(self.side);
+
+        for move_index in self.first_move[self.ply]..self.first_move[self.ply + 1] {
+            self.sort(move_index);
+
+            let from = self.move_list[move_index as usize].unwrap().from;
+            let to = self.move_list[move_index as usize].unwrap().to;
+
+            if score + self.board.value[to as usize].value() < alpha {
+                continue;
+            }
+
+            score = self.recapture_search(from, to);
+
+            if score > best_score {
+                best_score = score;
+                best_move_index = move_index;
+            }
+        }
+
+        if best_score > 0 {
+            score += best_score;
+        }
+
+        if score > alpha {
+            if score >= beta {
+                if best_score > 0 {
+                    self.board.hash.update_position_best_move(
+                        self.side,
+                        self.move_list[best_move_index as usize].unwrap(),
+                    );
+                }
+
+                return beta;
+            }
+
+            return score;
+        }
+
+        alpha
+    }
+
+    fn check_if_time_is_exhausted(&mut self) {
+        if (get_time() >= self.stop_time || (self.max_time < 50 && self.ply > 1))
+            && !self.fixed_depth
+            && self.ply > 1
+        {
+            self.stop_search = true;
+            // longjmp(env, 0);
+        }
+    }
+
+    fn sort(&mut self, from_index: isize) {
+        let mut best_score = self.move_list[from_index as usize].unwrap().score;
+        let mut best_score_index = from_index;
+
+        for i in from_index + 1..self.first_move[self.ply + 1] {
+            if self.move_list[i as usize].unwrap().score > best_score {
+                best_score = self.move_list[i as usize].unwrap().score;
+                best_score_index = i;
+            }
+        }
+
+        let move_ = self.move_list[from_index as usize];
+        self.move_list[from_index as usize] = self.move_list[best_score_index as usize];
+        self.move_list[best_score_index as usize] = move_;
+    }
+
+    /// Search backward for an identical position (repetition).
+    /// Positions are identical if the key and lock are the same.
+    fn search_backward_for_identical_position(&self) -> bool {
+        let mut cur = self.ply_from_start_of_game.saturating_sub(4);
+        let end = self
+            .ply_from_start_of_game
+            .saturating_sub(self.fifty as usize);
+
+        while cur >= end {
+            if self.game_list[cur].unwrap().hash == self.board.hash.current_key
+                && self.game_list[cur].unwrap().lock == self.board.hash.current_lock
+            {
+                return true;
+            }
+
+            cur -= 2;
+        }
+
+        false
+    }
+
+    /// Main part of the search.
+    /// Alpha is the player's best score found so far.
+    /// Beta is the opponent's best score found so far.
+    fn search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
+        // Stop if the position is a repeat
+        if self.ply > 0 && self.search_backward_for_identical_position() {
+            return 0;
+        }
+
+        // If depth has run out, the capture search is performed
+        if depth == 0 {
+            return self.capture_search(alpha, beta);
+        }
+
+        self.nodes += 1;
+
+        // Check the time every 4,096 positions (efficient bitwise AND operation)
+        if self.nodes & 4096 == 0 {
+            self.check_if_time_is_exhausted();
+        }
+
+        if self.ply > MAX_PLY - 2 {
+            return self.evaluate_position();
+        }
+
+        let mut best_move: Option<Move> = None;
+        let mut best_score = -10001;
+
+        let in_check = self.is_square_attacked_by_side(
+            self.side.opponent(),
+            self.board.bit_pieces[self.side as usize][Piece::King as usize]
+                .next_bit()
+                .try_into()
+                .expect("Failed to convert square to Square"),
+        );
+
+        self.generate_moves_and_captures(self.side);
+
+        // If the position is in the hash table, look up its best move
+        if self
+            .board
+            .hash
+            .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
+        {
+            self.set_hash_move();
+        }
+
+        let mut legal_moves_count = 0;
+
+        // Loop through the moves in order of their score
+        for move_index in self.first_move[self.ply]..self.first_move[self.ply + 1] {
+            self.sort(move_index);
+
+            // Skip invalid moves (i.e. pinned pieces)
+            if !self.make_move(
+                self.move_list[move_index as usize].unwrap().from,
+                self.move_list[move_index as usize].unwrap().to,
+            ) {
+                continue;
+            }
+
+            legal_moves_count += 1;
+
+            let next_depth = match self.is_square_attacked_by_side(
+                self.side.opponent(),
+                self.board.bit_pieces[self.side as usize][Piece::King as usize]
+                    .next_bit()
+                    .try_into()
+                    .expect("Failed to convert square to Square"),
+            ) {
+                true => depth,
+                false => {
+                    if self.move_list[move_index as usize].unwrap().score > CAPTURE_SCORE as isize
+                        || legal_moves_count == 1
+                        || in_check
+                    {
+                        depth - 1
+                    } else if self.move_list[move_index as usize].unwrap().score > 0 {
+                        depth - 2
+                    } else {
+                        depth - 3
+                    }
+                }
+            };
+
+            // Get score for opponent's next move
+            let score = -self.search(-beta, -alpha, next_depth);
+
+            self.take_back_move();
+
+            if score > best_score {
+                best_score = score;
+                best_move = self.move_list[move_index as usize];
+            }
+
+            if score > alpha {
+                // Beta cutoff - score is too good; opponent won't allow this position
+                if score >= beta {
+                    let move_ = self.move_list[move_index as usize].unwrap();
+
+                    // Check if it's a "quiet" move
+                    // These moves need a history to distinguish between seemingly similar moves
+                    if move_.to.as_bit() & self.board.bit_all.0 == 0 {
+                        // Add to history table
+                        self.history_table[move_.from as usize][move_.to as usize] +=
+                            depth as isize;
+                    }
+
+                    self.board.hash.update_position_best_move(self.side, move_);
+                    return beta;
+                }
+
+                alpha = score;
+            }
+        }
+
+        // Either checkmate or stalemate
+        if legal_moves_count == 0 {
+            match self.is_square_attacked_by_side(
+                self.side.opponent(),
+                self.board.bit_pieces[self.side as usize][Piece::King as usize]
+                    .next_bit()
+                    .try_into()
+                    .expect("Failed to convert square to Square"),
+            ) {
+                true => return -10000 + self.ply as i32, // TODO: Improve safety, though likely irrelevant
+                false => return 0,
+            }
+        }
+
+        // Draw by 50-move rule
+        if self.fifty >= 100 {
+            return 0;
+        }
+
+        self.board
+            .hash
+            .update_position_best_move(self.side, best_move.unwrap());
+
+        alpha
+    }
+
+    /// Launch the search.
+    /// Iterates until maximum depth is reached or the allotted time runs out.
+    pub fn think(&mut self) {
+        self.stop_search = false;
+
+        // setjmp(env);
+
+        if self.stop_search {
+            while self.ply > 0 {
+                self.take_back_move();
+                return;
+            }
+        }
+
+        if !self.fixed_time {
+            // Halve allotted time for check-evasion or recapture moves
+            if self.is_square_attacked_by_side(
+                self.side.opponent(),
+                self.board.bit_pieces[self.side as usize][Piece::King as usize]
+                    .next_bit()
+                    .try_into()
+                    .expect("Failed to convert square to Square"),
+            ) {
+                self.max_time /= 2;
+            }
+        }
+
+        self.start_time = get_time();
+        self.stop_time = self.start_time + self.max_time as u64;
+
+        self.ply = 0;
+        self.nodes = 0;
+
+        self.new_position();
+
+        self.history_table = [[0; NUM_SQUARES]; NUM_SQUARES];
+
+        println!("PLY      NODES  SCORE  PV");
+
+        for depth in 1..=self.max_depth {
+            if !self.fixed_depth && self.max_depth > 1 {
+                if self.fixed_time {
+                    if get_time() >= self.start_time + self.max_time as u64 {
+                        self.stop_search = true;
+                        return;
+                    }
+                } else if get_time() >= self.start_time + self.max_time as u64 / 4 {
+                    self.stop_search = true;
+                    return;
+                }
+            }
+
+            let score = self.search(-10000, 10000, depth);
+
+            print!(
+                "{:>3} {:>8} {:>6} {}",
+                depth,
+                score,
+                (get_time() - self.start_time) / 10,
+                self.nodes,
+            );
+
+            if self
+                .board
+                .hash
+                .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
+            {
+                self.display_principal_variation(depth);
+            } else {
+                self.best_move_from = None;
+                self.best_move_to = None;
+            }
+
+            println!();
+            std::io::Write::flush(&mut std::io::stdout()).unwrap();
+
+            if score > 9000 || score < -9000 {
+                break;
+            }
+        }
+    }
+
     fn new() -> Self {
         let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
 
@@ -1710,6 +2155,17 @@ impl Position {
             piece_material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
             turn: Side::White,
+            stop_search: false,
+            best_move_from: None,
+            best_move_to: None,
+            hash_from: None,
+            hash_to: None,
+            start_time: 0,
+            stop_time: 0,
+            max_time: 0,
+            fixed_time: false,
+            max_depth: 0,
+            fixed_depth: false,
             // Static
             side: Side::White,
             other_side: Side::Black,
