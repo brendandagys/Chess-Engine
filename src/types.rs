@@ -1,7 +1,6 @@
 use crate::{
     constants::{
-        INIT_BOARD, INIT_COLOR, LSB_64_TABLE, NUM_FILES, NUM_PIECE_TYPES, NUM_RANKS, NUM_SIDES,
-        NUM_SQUARES,
+        INIT_BOARD, INIT_COLOR, NUM_FILES, NUM_PIECE_TYPES, NUM_RANKS, NUM_SIDES, NUM_SQUARES,
     },
     hash::Hash,
 };
@@ -38,9 +37,13 @@ impl BitBoard {
     /// Folding trick from chessprogramming.org
     /// https://www.chessprogramming.org/Matt_Taylor
     pub fn next_bit_mut(&mut self) -> u8 {
-        self.0 ^= self.0 - 1;
-        let folded = self.0 ^ (self.0 >> 32);
-        LSB_64_TABLE[(folded as usize) * (0x78291ACF >> 26)]
+        if self.0 == 0 {
+            return 64; // No bits set
+        }
+
+        let bit_position = self.0.trailing_zeros() as u8;
+        self.0 &= self.0 - 1; // Clear the least significant bit
+        bit_position
     }
 
     /// Returns the next bit, without mutating the original
@@ -284,9 +287,10 @@ impl Board {
 
         for square in Square::iter() {
             let piece = Piece::try_from(INIT_BOARD[square as usize]).unwrap();
-            let side = Side::try_from(INIT_COLOR[square as usize]).unwrap();
+            let side_val = INIT_COLOR[square as usize];
 
-            if piece != Piece::Empty {
+            if piece != Piece::Empty && side_val < 2 {
+                let side = Side::try_from(side_val).unwrap();
                 board[square as usize] = piece;
                 hash.update_position_hash_key_and_lock(side, piece, square);
                 bit_pieces[side as usize][piece as usize].set_bit(square);
@@ -304,7 +308,22 @@ impl Board {
         }
     }
 
+    pub fn empty() -> Self {
+        Self {
+            value: [Piece::Empty; NUM_SQUARES],
+            bit_pieces: [[BitBoard(0); NUM_PIECE_TYPES]; NUM_SIDES],
+            bit_units: [BitBoard(0); NUM_SIDES],
+            bit_all: BitBoard(0),
+            hash: Hash::new(),
+        }
+    }
+
     pub fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        // Skip Empty pieces as they don't have bitboards
+        if piece == Piece::Empty {
+            return;
+        }
+
         self.value[square as usize] = piece;
         self.hash
             .update_position_hash_key_and_lock(side, piece, square);
@@ -314,6 +333,11 @@ impl Board {
     }
 
     pub fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        // Skip Empty pieces as they don't have bitboards
+        if piece == Piece::Empty {
+            return;
+        }
+
         // XOR will remove the piece
         self.hash
             .update_position_hash_key_and_lock(side, piece, square);
@@ -324,6 +348,11 @@ impl Board {
     }
 
     pub fn update_piece(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
+        // Skip Empty pieces as they don't have bitboards
+        if piece == Piece::Empty {
+            return;
+        }
+
         self.bit_units[side as usize].clear_bit(from);
         self.bit_units[side as usize].set_bit(to);
 

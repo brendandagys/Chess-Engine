@@ -15,33 +15,33 @@ use crate::{
 
 pub struct Position {
     // DYNAMIC
-    move_list: [Option<Move>; MOVE_STACK],
-    first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
+    pub move_list: [Option<Move>; MOVE_STACK],
+    pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
     game_list: [Option<Game>; GAME_STACK],
-    fifty: u8,                     // Moves since last pawn move or capture (up to 100-ply)
-    nodes: usize, // Total nodes (position in search tree) searched since start of turn
-    ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
-    ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
-    board: Board,
+    pub fifty: u8,    // Moves since last pawn move or capture (up to 100-ply)
+    pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
+    pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
+    pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
+    pub board: Board,
     history_table: [[isize; NUM_SQUARES]; NUM_SQUARES], // [from][to] = score
-    pawn_material_score: [usize; NUM_SIDES],
-    piece_material_score: [usize; NUM_SIDES],
-    castle: u8, // Castle permissions
+    pub pawn_material_score: [usize; NUM_SIDES],
+    pub piece_material_score: [usize; NUM_SIDES],
+    pub castle: u8, // Castle permissions
     turn: Side,
     stop_search: bool,
     best_move_from: Option<Square>, // Found from the search/hash
     best_move_to: Option<Square>,   // Found from the search/hash
-    hash_from: Option<Square>,
-    hash_to: Option<Square>,
-    start_time: u64,
+    pub hash_from: Option<Square>,
+    pub hash_to: Option<Square>,
+    pub start_time: u64,
     stop_time: u64,
-    max_time: u8,
-    fixed_time: bool,
-    max_depth: u16,
-    fixed_depth: bool,
+    pub max_time: u32,
+    pub fixed_time: bool,
+    pub max_depth: u16,
+    pub fixed_depth: bool,
     // STATIC
-    side: Side,
-    other_side: Side,
+    pub side: Side,
+    pub other_side: Side,
     square_score: [[[i32; NUM_SQUARES]; NUM_PIECE_TYPES]; NUM_SIDES],
     king_endgame_score: [[i32; NUM_SQUARES]; NUM_SIDES],
     passed_pawns_score: [[i32; NUM_SQUARES]; NUM_SIDES], // Score for 7th rank is built into `square_score`
@@ -492,6 +492,11 @@ impl Position {
         loop {
             square_index += plus;
 
+            if square_index < 0 || square_index >= 64 {
+                square_index -= plus; // Step back to last valid square
+                break;
+            }
+
             if COLUMN[square_index as usize] == 0
                 || COLUMN[square_index as usize] == 7
                 || ROW[square_index as usize] == 0
@@ -556,7 +561,7 @@ impl Position {
         (square_score, king_endgame_score, passed_pawns_score)
     }
 
-    fn new_position(&mut self) {
+    pub fn new_position(&mut self) {
         self.piece_material_score = [0; NUM_SIDES];
         self.pawn_material_score = [0; NUM_SIDES];
 
@@ -770,7 +775,7 @@ impl Position {
                     & self.board.bit_all.0)
                     == 0
                 {
-                    return Some(BitBoard(attacking_piece.into()).into());
+                    return Some(Square::try_from(attacking_piece).ok()?);
                 }
             }
         }
@@ -781,14 +786,18 @@ impl Position {
         );
 
         if b1.0 != 0 {
-            return Some(BitBoard(b1.next_bit().into()).into());
+            return Some(Square::try_from(b1.next_bit()).ok()?);
         }
 
         None
     }
 
     fn generate_en_passant_moves(&mut self, side: Side, move_count: &mut isize) {
-        let last_game_entry = self.game_list[self.ply_from_start_of_game - 1 as usize];
+        if self.ply_from_start_of_game == 0 {
+            return;
+        }
+
+        let last_game_entry = self.game_list[self.ply_from_start_of_game - 1];
 
         if let Some(entry) = last_game_entry {
             let last_square_opponent_moved_from = entry.from;
@@ -991,29 +1000,32 @@ impl Position {
             let square_from = unblocked_pawns.next_bit_mut();
             let to = self.pawn_plus_index[side as usize][square_from as usize];
 
-            self.add_move(
-                square_from
-                    .try_into()
-                    .expect("Failed to convert square_from to Square"),
-                to.try_into()
-                    .expect("Failed to convert pawn plus index to Square"),
-                &mut move_count,
-            );
-
-            if self.ranks[side as usize][square_from as usize] == 1
-                && self.board.value
-                    [self.pawn_double_index[side as usize][square_from as usize] as usize]
-                    == Piece::Empty
-            {
+            // Only add the move if the destination square is valid
+            if to >= 0 && to <= 63 {
                 self.add_move(
                     square_from
                         .try_into()
                         .expect("Failed to convert square_from to Square"),
-                    self.pawn_double_index[side as usize][square_from as usize]
-                        .try_into()
-                        .expect("Failed to convert pawn double index to Square"),
+                    to.try_into()
+                        .expect("Failed to convert pawn plus index to Square"),
                     &mut move_count,
                 );
+
+                if self.ranks[side as usize][square_from as usize] == 1
+                    && self.board.value
+                        [self.pawn_double_index[side as usize][square_from as usize] as usize]
+                        == Piece::Empty
+                {
+                    self.add_move(
+                        square_from
+                            .try_into()
+                            .expect("Failed to convert square_from to Square"),
+                        self.pawn_double_index[side as usize][square_from as usize]
+                            .try_into()
+                            .expect("Failed to convert pawn double index to Square"),
+                        &mut move_count,
+                    );
+                }
             }
         }
 
@@ -1299,6 +1311,56 @@ impl Position {
         self.first_move[self.ply + 1] = move_count;
     }
 
+    pub fn generate_moves(&mut self, side: Side) {
+        self.generate_moves_and_captures(side);
+    }
+
+    pub fn set_material(&mut self) {
+        self.pawn_material_score = [0; 2];
+        self.piece_material_score = [0; 2];
+
+        for square in 0..64 {
+            let piece = self.board.value[square];
+            if piece != Piece::Empty {
+                let side_idx = if self.board.bit_units[Side::White as usize]
+                    .is_bit_set(Square::try_from(square as u8).unwrap())
+                {
+                    0
+                } else {
+                    1
+                };
+
+                if piece == Piece::Pawn {
+                    self.pawn_material_score[side_idx] += piece.value() as usize;
+                } else {
+                    self.piece_material_score[side_idx] += piece.value() as usize;
+                }
+            }
+        }
+    }
+
+    pub fn take_back(&mut self) {
+        self.take_back_move();
+    }
+
+    pub fn reps(&self) -> usize {
+        let mut count = 0;
+        let mut i = self.ply_from_start_of_game;
+
+        while i >= self.fifty as usize && i >= 2 {
+            i -= 2;
+            if let Some(game) = self.game_list[i] {
+                if game.hash == self.board.hash.current_key
+                    && game.lock == self.board.hash.current_lock
+                {
+                    count += 1;
+                }
+            }
+        }
+
+        count
+    }
+
     /// Make a move and return success state.
     /// If unsuccessful, the move will be undone.
     pub fn make_move(&mut self, from: Square, to: Square) -> bool {
@@ -1415,13 +1477,13 @@ impl Position {
         true
     }
 
-    fn take_back_move(&mut self) {
+    pub fn take_back_move(&mut self) {
+        let game = self.game_list[self.ply_from_start_of_game].expect("No game to take back");
+
         self.side = self.side.opponent();
         self.other_side = self.other_side.opponent();
         self.ply -= 1;
         self.ply_from_start_of_game -= 1;
-
-        let game = self.game_list[self.ply_from_start_of_game].expect("No game to take back");
 
         let from = game.from;
         let to = game.to;
@@ -1685,11 +1747,11 @@ impl Position {
     fn set_hash_move(&mut self) {
         for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
             if let Some(ref mut move_) = self.move_list[i as usize] {
-                if move_.from == self.best_move_from.unwrap()
-                    && move_.to == self.best_move_to.unwrap()
-                {
-                    move_.score = HASH_SCORE as isize;
-                    return;
+                if let (Some(hash_from), Some(hash_to)) = (self.hash_from, self.hash_to) {
+                    if move_.from == hash_from && move_.to == hash_to {
+                        move_.score = HASH_SCORE as isize;
+                        return;
+                    }
                 }
             }
         }
@@ -1876,12 +1938,17 @@ impl Position {
             .saturating_sub(self.fifty as usize);
 
         while cur >= end {
-            if self.game_list[cur].unwrap().hash == self.board.hash.current_key
-                && self.game_list[cur].unwrap().lock == self.board.hash.current_lock
-            {
-                return true;
+            if let Some(game) = self.game_list[cur] {
+                if game.hash == self.board.hash.current_key
+                    && game.lock == self.board.hash.current_lock
+                {
+                    return true;
+                }
             }
 
+            if cur < 2 {
+                break;
+            }
             cur -= 2;
         }
 
@@ -1964,11 +2031,11 @@ impl Position {
                         || legal_moves_count == 1
                         || in_check
                     {
-                        depth - 1
+                        if depth > 0 { depth - 1 } else { 0 }
                     } else if self.move_list[move_index as usize].unwrap().score > 0 {
-                        depth - 2
+                        if depth > 1 { depth - 2 } else { 0 }
                     } else {
-                        depth - 3
+                        if depth > 2 { depth - 3 } else { 0 }
                     }
                 }
             };
@@ -2026,6 +2093,12 @@ impl Position {
         self.board
             .hash
             .update_position_best_move(self.side, best_move.unwrap());
+
+        // Store the best move found at root level (ply 0)
+        if self.ply == 0 {
+            self.best_move_from = Some(best_move.unwrap().from);
+            self.best_move_to = Some(best_move.unwrap().to);
+        }
 
         alpha
     }
@@ -2106,6 +2179,10 @@ impl Position {
             {
                 self.display_principal_variation(depth);
             } else {
+                // If hash lookup fails, use the best move from search
+                self.hash_from = self.best_move_from;
+                self.hash_to = self.best_move_to;
+
                 self.best_move_from = None;
                 self.best_move_to = None;
             }
@@ -2119,7 +2196,7 @@ impl Position {
         }
     }
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
 
         let (
@@ -2171,7 +2248,7 @@ impl Position {
             hash_to: None,
             start_time: 0,
             stop_time: 0,
-            max_time: 0,
+            max_time: 0u32,
             fixed_time: false,
             max_depth: 0,
             fixed_depth: false,

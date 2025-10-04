@@ -3,5 +3,12 @@ name = "chess_engine"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "chess_engine"
+
 [dependencies]
 rand = "0.8"
+
+[[bin]]
+name = "chess_engine_cli"
+path = "src/main.rs"

@@ -36,7 +36,7 @@ impl HashTable {
 pub struct Hash {
     pub current_key: u64,
     pub current_lock: u64,
-    collisions: u64,
+    pub collisions: u64,
     hash_tables: [HashTable; NUM_SIDES],
 }
 
@@ -64,6 +64,11 @@ impl Hash {
 
     /// Update the current key and lock. Called when pieces are moved on the board.
     pub fn update_position_hash_key_and_lock(&mut self, side: Side, piece: Piece, square: Square) {
+        // Skip Empty pieces as they're not included in the hash tables
+        if piece == Piece::Empty {
+            return;
+        }
+
         if let (Some(hash_table), Some(lock_table)) =
             (ZOBRIST_HASH_TABLE.get(), ZOBRIST_LOCK_TABLE.get())
         {
