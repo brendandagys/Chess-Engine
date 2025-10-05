@@ -494,7 +494,7 @@ fn white_pawn_on_7th_rank_can_only_promote() {
         .collect();
 
     // Should only have one forward move (to 8th rank for promotion)
-    assert_eq!(pawn_moves.len(), 1);
+    assert_eq!(pawn_moves.len(), 4);
     assert!(moves.contains(&(Square::D7, Square::D8)));
 }
 

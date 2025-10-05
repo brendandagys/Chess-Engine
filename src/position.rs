@@ -110,6 +110,40 @@ impl Position {
         *move_count += 1;
     }
 
+    fn add_pawn_promotion_moves(&mut self, from: Square, to: Square, move_count: &mut isize) {
+        // Add moves for all four promotion pieces: Queen, Rook, Bishop, Knight
+        for promote_piece in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
+            let move_ = Move {
+                from,
+                to,
+                promote: Some(promote_piece),
+                score: self.history_table[from as usize][to as usize],
+            };
+            self.move_list[*move_count as usize] = Some(move_);
+            *move_count += 1;
+        }
+    }
+
+    fn add_pawn_promotion_captures(
+        &mut self,
+        from: Square,
+        to: Square,
+        base_score: isize,
+        move_count: &mut isize,
+    ) {
+        // Add capture moves for all four promotion pieces: Queen, Rook, Bishop, Knight
+        for promote_piece in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
+            let move_ = Move {
+                from,
+                to,
+                promote: Some(promote_piece),
+                score: base_score + CAPTURE_SCORE as isize,
+            };
+            self.move_list[*move_count as usize] = Some(move_);
+            *move_count += 1;
+        }
+    }
+
     fn get_pawn_masks() -> (
         [[BitBoard; NUM_SQUARES]; NUM_SIDES],
         [BitBoard; NUM_SQUARES],
@@ -1038,33 +1072,65 @@ impl Position {
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let square_to = victim
+                .try_into()
+                .expect("Failed to convert victim to Square");
 
-            self.add_capture(
-                square_from
-                    .try_into()
-                    .expect("Failed to convert square_from to Square"),
-                victim
-                    .try_into()
-                    .expect("Failed to convert victim to Square"),
-                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
-                &mut move_count,
-            );
+            let base_score =
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
+
+            // Check if this is a promotion
+            if self.ranks[side as usize][square_from as usize] == 6 {
+                self.add_pawn_promotion_captures(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            } else {
+                self.add_capture(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            }
         }
 
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let square_to = victim
+                .try_into()
+                .expect("Failed to convert victim to Square");
 
-            self.add_capture(
-                square_from
-                    .try_into()
-                    .expect("Failed to convert square_from to Square"),
-                victim
-                    .try_into()
-                    .expect("Failed to convert victim to Square"),
-                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
-                &mut move_count,
-            );
+            let base_score =
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
+
+            // Check if this is a promotion
+            if self.ranks[side as usize][square_from as usize] == 6 {
+                self.add_pawn_promotion_captures(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            } else {
+                self.add_capture(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            }
         }
 
         while unblocked_pawns.0 != 0 {
@@ -1073,29 +1139,43 @@ impl Position {
 
             // Only add the move if the destination square is valid
             if to >= 0 && to <= 63 {
-                self.add_move(
-                    square_from
-                        .try_into()
-                        .expect("Failed to convert square_from to Square"),
-                    to.try_into()
-                        .expect("Failed to convert pawn plus index to Square"),
-                    &mut move_count,
-                );
+                let square_to = to
+                    .try_into()
+                    .expect("Failed to convert pawn plus index to Square");
 
-                if self.ranks[side as usize][square_from as usize] == 1
-                    && self.board.value
-                        [self.pawn_double_index[side as usize][square_from as usize] as usize]
-                        == Piece::Empty
-                {
+                // Check if this is a promotion
+                if self.ranks[side as usize][square_from as usize] == 6 {
+                    self.add_pawn_promotion_moves(
+                        square_from
+                            .try_into()
+                            .expect("Failed to convert square_from to Square"),
+                        square_to,
+                        &mut move_count,
+                    );
+                } else {
                     self.add_move(
                         square_from
                             .try_into()
                             .expect("Failed to convert square_from to Square"),
-                        self.pawn_double_index[side as usize][square_from as usize]
-                            .try_into()
-                            .expect("Failed to convert pawn double index to Square"),
+                        square_to,
                         &mut move_count,
                     );
+
+                    if self.ranks[side as usize][square_from as usize] == 1
+                        && self.board.value
+                            [self.pawn_double_index[side as usize][square_from as usize] as usize]
+                            == Piece::Empty
+                    {
+                        self.add_move(
+                            square_from
+                                .try_into()
+                                .expect("Failed to convert square_from to Square"),
+                            self.pawn_double_index[side as usize][square_from as usize]
+                                .try_into()
+                                .expect("Failed to convert pawn double index to Square"),
+                            &mut move_count,
+                        );
+                    }
                 }
             }
         }
@@ -1277,33 +1357,65 @@ impl Position {
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let square_to = victim
+                .try_into()
+                .expect("Failed to convert victim to Square");
 
-            self.add_capture(
-                square_from
-                    .try_into()
-                    .expect("Failed to convert square_from to Square"),
-                victim
-                    .try_into()
-                    .expect("Failed to convert victim to Square"),
-                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
-                &mut move_count,
-            );
+            let base_score =
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
+
+            // Check if this is a promotion
+            if self.ranks[side as usize][square_from as usize] == 6 {
+                self.add_pawn_promotion_captures(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            } else {
+                self.add_capture(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            }
         }
 
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let square_to = victim
+                .try_into()
+                .expect("Failed to convert victim to Square");
 
-            self.add_capture(
-                square_from
-                    .try_into()
-                    .expect("Failed to convert square_from to Square"),
-                victim
-                    .try_into()
-                    .expect("Failed to convert victim to Square"),
-                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize,
-                &mut move_count,
-            );
+            let base_score =
+                PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
+
+            // Check if this is a promotion
+            if self.ranks[side as usize][square_from as usize] == 6 {
+                self.add_pawn_promotion_captures(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            } else {
+                self.add_capture(
+                    square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square"),
+                    square_to,
+                    base_score,
+                    &mut move_count,
+                );
+            }
         }
 
         // Knights
@@ -1433,35 +1545,59 @@ impl Position {
     /// Make a move and return success state.
     /// If unsuccessful, the move will be undone.
     pub fn make_move(&mut self, from: Square, to: Square) -> bool {
+        self.make_move_with_promotion(from, to, None)
+    }
+
+    /// Make a move with optional promotion piece and return success state.
+    /// If unsuccessful, the move will be undone.
+    pub fn make_move_with_promotion(
+        &mut self,
+        from: Square,
+        to: Square,
+        promote: Option<Piece>,
+    ) -> bool {
         // Check for castling
         if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
+            // Cannot castle out of check
             if self.is_square_attacked_by_side(self.side.opponent(), from) {
                 return false;
             }
 
             if to == Square::G1 {
-                if self.is_square_attacked_by_side(self.side.opponent(), Square::F1) {
+                // Cannot castle through check or into check
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::F1)
+                    || self.is_square_attacked_by_side(self.side.opponent(), Square::G1)
+                {
                     return false;
                 }
 
                 self.board
                     .update_piece(self.side, Piece::Rook, Square::H1, Square::F1);
             } else if to == Square::C1 {
-                if self.is_square_attacked_by_side(self.side.opponent(), Square::D1) {
+                // Cannot castle through check or into check
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::D1)
+                    || self.is_square_attacked_by_side(self.side.opponent(), Square::C1)
+                {
                     return false;
                 }
 
                 self.board
                     .update_piece(self.side, Piece::Rook, Square::A1, Square::D1);
             } else if to == Square::G8 {
-                if self.is_square_attacked_by_side(self.side.opponent(), Square::F8) {
+                // Cannot castle through check or into check
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::F8)
+                    || self.is_square_attacked_by_side(self.side.opponent(), Square::G8)
+                {
                     return false;
                 }
 
                 self.board
                     .update_piece(self.side, Piece::Rook, Square::H8, Square::F8);
             } else if to == Square::C8 {
-                if self.is_square_attacked_by_side(self.side.opponent(), Square::D8) {
+                // Cannot castle through check or into check
+                if self.is_square_attacked_by_side(self.side.opponent(), Square::D8)
+                    || self.is_square_attacked_by_side(self.side.opponent(), Square::C8)
+                {
                     return false;
                 }
 
@@ -1514,10 +1650,11 @@ impl Position {
 
         // Handle promotions
         if self.board.value[from as usize] == Piece::Pawn && [0, 7].contains(&ROW[to as usize]) {
+            let promotion_piece = promote.unwrap_or(Piece::Queen);
             self.board.remove_piece(self.side, Piece::Pawn, from);
-            self.board.add_piece(self.side, Piece::Queen, to);
+            self.board.add_piece(self.side, promotion_piece, to);
 
-            game.promote = Some(Piece::Queen);
+            game.promote = Some(promotion_piece);
         } else {
             self.board
                 .update_piece(self.side, self.board.value[from as usize], from, to);
@@ -1556,8 +1693,10 @@ impl Position {
 
         let from = game.from;
         let to = game.to;
-        let castle_permissions = game.castle;
-        let fifty = game.fifty;
+
+        // Restore castle permissions and fifty-move counter
+        self.castle = game.castle;
+        self.fifty = game.fifty;
 
         // En passant
         if self.board.value[to as usize] == Piece::Pawn
@@ -1574,9 +1713,9 @@ impl Position {
         }
 
         // Promotion
-        if game.promote.is_some() {
+        if let Some(promotion_piece) = game.promote {
             self.board.add_piece(self.side, Piece::Pawn, from);
-            self.board.remove_piece(self.side, Piece::Queen, to);
+            self.board.remove_piece(self.side, promotion_piece, to);
         } else {
             // Regular undo of a non-promotion move
             self.board
@@ -1841,7 +1980,8 @@ impl Position {
 
             print!(" ");
             Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
-            self.make_move(self.hash_from.unwrap(), self.hash_to.unwrap());
+            // Note: Hash table doesn't store promotion piece, so we use None which defaults to Queen
+            self.make_move_with_promotion(self.hash_from.unwrap(), self.hash_to.unwrap(), None);
         }
 
         while self.ply > 0 {
@@ -2077,10 +2217,13 @@ impl Position {
         for move_index in self.first_move[self.ply]..self.first_move[self.ply + 1] {
             self.sort(move_index);
 
+            let current_move = self.move_list[move_index as usize].unwrap();
+
             // Skip invalid moves (i.e. pinned pieces)
-            if !self.make_move(
-                self.move_list[move_index as usize].unwrap().from,
-                self.move_list[move_index as usize].unwrap().to,
+            if !self.make_move_with_promotion(
+                current_move.from,
+                current_move.to,
+                current_move.promote,
             ) {
                 continue;
             }
@@ -2355,5 +2498,259 @@ impl Position {
             pawn_right_index, // "Right" for both sides is toward H file
             ranks: Self::get_ranks(),
         }
+    }
+
+    /// Load a position from a FEN (Forsyth-Edwards Notation) string.
+    ///
+    /// Supports all six FEN fields:
+    /// 1. Piece placement (from white's perspective, rank 8 to rank 1)
+    /// 2. Active color ("w" or "b")
+    /// 3. Castling availability (KQkq or "-")
+    /// 4. En passant target square (e.g., "e3" or "-")
+    /// 5. Halfmove clock (number of halfmoves since last capture or pawn advance)
+    /// 6. Fullmove number (starts at 1, increments after Black's move)
+    ///
+    /// # Arguments
+    /// * `fen` - A string slice containing the FEN notation
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err` with error message on failure
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut position = Position::new();
+    /// // Starting position
+    /// position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+    /// // Position after 1.e4
+    /// position.load_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+    /// ```
+    pub fn load_fen(&mut self, fen: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Reset board
+        self.board = crate::types::Board::empty();
+
+        let parts: Vec<&str> = fen.split(' ').collect();
+        if parts.is_empty() {
+            return Err("Invalid FEN string".into());
+        }
+
+        let board_part = parts[0];
+        let ranks: Vec<&str> = board_part.split('/').collect();
+
+        if ranks.len() != 8 {
+            return Err("Invalid FEN board: must have 8 ranks".into());
+        }
+
+        // Process each rank from 8 to 1 (FEN starts at rank 8)
+        for (rank_idx, rank_str) in ranks.iter().enumerate() {
+            let rank = 7 - rank_idx; // Convert to 0-based rank (rank 8 → 7, rank 1 → 0)
+            let mut file = 0usize;
+
+            for ch in rank_str.chars() {
+                if ch.is_ascii_digit() {
+                    let empty_squares = ch.to_digit(10).unwrap() as usize;
+                    file += empty_squares;
+                    continue;
+                }
+
+                if file >= 8 {
+                    return Err(
+                        format!("Invalid FEN: too many squares in rank {}", rank + 1).into(),
+                    );
+                }
+
+                let square_idx = rank * 8 + file;
+                let square = Square::try_from(square_idx as u8)?;
+
+                let (piece, side) = match ch {
+                    'K' => (Piece::King, Side::White),
+                    'Q' => (Piece::Queen, Side::White),
+                    'R' => (Piece::Rook, Side::White),
+                    'B' => (Piece::Bishop, Side::White),
+                    'N' => (Piece::Knight, Side::White),
+                    'P' => (Piece::Pawn, Side::White),
+                    'k' => (Piece::King, Side::Black),
+                    'q' => (Piece::Queen, Side::Black),
+                    'r' => (Piece::Rook, Side::Black),
+                    'b' => (Piece::Bishop, Side::Black),
+                    'n' => (Piece::Knight, Side::Black),
+                    'p' => (Piece::Pawn, Side::Black),
+                    _ => return Err(format!("Invalid piece character: {}", ch).into()),
+                };
+
+                self.board.add_piece(side, piece, square);
+                file += 1;
+            }
+
+            if file != 8 {
+                return Err(format!(
+                    "Invalid FEN: rank {} has {} squares instead of 8",
+                    rank + 1,
+                    file
+                )
+                .into());
+            }
+        }
+
+        // Parse side to move
+        if parts.len() > 1 {
+            match parts[1] {
+                "w" => {
+                    self.side = Side::White;
+                    self.other_side = Side::Black;
+                }
+                "b" => {
+                    self.side = Side::Black;
+                    self.other_side = Side::White;
+                }
+                _ => {}
+            }
+        }
+
+        // Parse castling rights
+        if parts.len() > 2 {
+            self.castle = 0;
+            for ch in parts[2].chars() {
+                match ch {
+                    'K' => {
+                        if self.board.bit_pieces[0][Piece::King as usize].is_bit_set(Square::E1) {
+                            self.castle |= 1;
+                        }
+                    }
+                    'Q' => {
+                        if self.board.bit_pieces[0][Piece::King as usize].is_bit_set(Square::E1) {
+                            self.castle |= 2;
+                        }
+                    }
+                    'k' => {
+                        if self.board.bit_pieces[1][Piece::King as usize].is_bit_set(Square::E8) {
+                            self.castle |= 4;
+                        }
+                    }
+                    'q' => {
+                        if self.board.bit_pieces[1][Piece::King as usize].is_bit_set(Square::E8) {
+                            self.castle |= 8;
+                        }
+                    }
+                    '-' => {}
+                    _ => {}
+                }
+            }
+        }
+
+        // Parse en passant target square (field 4)
+        // Store the info but defer setting game_list until after ply_from_start_of_game is set
+        let ep_game_entry: Option<(Square, Square)> = if parts.len() > 3 {
+            let ep_square_str = parts[3];
+            if ep_square_str != "-" {
+                // Validate en passant square format (e.g., "e3", "d6")
+                if ep_square_str.len() == 2 {
+                    let file = ep_square_str.chars().next().unwrap();
+                    let rank = ep_square_str.chars().nth(1).unwrap();
+
+                    if !('a'..='h').contains(&file) || !('1'..='8').contains(&rank) {
+                        return Err(format!("Invalid en passant square: {}", ep_square_str).into());
+                    }
+
+                    // En passant square should only be on rank 3 (for white) or rank 6 (for black)
+                    if (self.side == Side::White && rank != '6')
+                        || (self.side == Side::Black && rank != '3')
+                    {
+                        return Err(format!(
+                            "Invalid en passant square {} for side to move",
+                            ep_square_str
+                        )
+                        .into());
+                    }
+
+                    // Calculate the pawn's actual square and where it moved from
+                    // The en passant square is where the pawn would be captured, not where it moved to
+                    let file_index = (file as u8 - b'a') as usize;
+
+                    // If white to move, black pawn moved (ep_square is rank 6, pawn is on rank 5)
+                    // If black to move, white pawn moved (ep_square is rank 3, pawn is on rank 4)
+                    let (pawn_to, pawn_from) = if self.side == Side::White {
+                        // Black pawn moved from rank 7 to rank 5, ep_square is rank 6
+                        let pawn_square = file_index + 4 * 8; // rank 5 (0-indexed: rank 4)
+                        let from_square = file_index + 6 * 8; // rank 7 (0-indexed: rank 6)
+                        (
+                            Square::try_from(pawn_square as u8)
+                                .map_err(|e| format!("Invalid pawn square: {}", e))?,
+                            Square::try_from(from_square as u8)
+                                .map_err(|e| format!("Invalid from square: {}", e))?,
+                        )
+                    } else {
+                        // White pawn moved from rank 2 to rank 4, ep_square is rank 3
+                        let pawn_square = file_index + 3 * 8; // rank 4 (0-indexed: rank 3)
+                        let from_square = file_index + 1 * 8; // rank 2 (0-indexed: rank 1)
+                        (
+                            Square::try_from(pawn_square as u8)
+                                .map_err(|e| format!("Invalid pawn square: {}", e))?,
+                            Square::try_from(from_square as u8)
+                                .map_err(|e| format!("Invalid from square: {}", e))?,
+                        )
+                    };
+
+                    Some((pawn_from, pawn_to))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Parse halfmove clock (field 5) - number of halfmoves since last capture or pawn advance
+        if parts.len() > 4 {
+            match parts[4].parse::<u8>() {
+                Ok(halfmove) => {
+                    self.fifty = halfmove;
+                }
+                Err(_) => {
+                    return Err(format!("Invalid halfmove clock: {}", parts[4]).into());
+                }
+            }
+        } else {
+            self.fifty = 0;
+        }
+
+        // Parse fullmove number (field 6) - increments after Black's move
+        // We convert this to ply_from_start_of_game (halfmoves)
+        if parts.len() > 5 {
+            match parts[5].parse::<usize>() {
+                Ok(fullmove) => {
+                    if fullmove < 1 {
+                        return Err("Fullmove number must be at least 1".into());
+                    }
+                    // Convert fullmove to ply: (fullmove - 1) * 2 + (0 if white to move, 1 if black)
+                    self.ply_from_start_of_game =
+                        (fullmove - 1) * 2 + if self.side == Side::Black { 1 } else { 0 };
+                }
+                Err(_) => {
+                    return Err(format!("Invalid fullmove number: {}", parts[5]).into());
+                }
+            }
+        } else {
+            // Default to move 1 if not specified
+            self.ply_from_start_of_game = if self.side == Side::Black { 1 } else { 0 };
+        }
+
+        // Now that ply_from_start_of_game is set, we can create the synthetic game_list entry for en passant
+        if let Some((pawn_from, pawn_to)) = ep_game_entry {
+            self.game_list[self.ply_from_start_of_game] = Some(Game {
+                from: pawn_from,
+                to: pawn_to,
+                promote: None,
+                capture: Piece::Empty,
+                fifty: self.fifty,
+                castle: self.castle,
+                hash: self.board.hash.current_key,
+                lock: self.board.hash.current_lock,
+            });
+        }
+
+        Ok(())
     }
 }

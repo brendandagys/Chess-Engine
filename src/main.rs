@@ -133,7 +133,10 @@ impl ChessEngine {
         let mut has_legal_moves = false;
         for i in 0..self.position.first_move[1] as usize {
             if let Some(mv) = self.position.move_list[i] {
-                if self.position.make_move(mv.from, mv.to) {
+                if self
+                    .position
+                    .make_move_with_promotion(mv.from, mv.to, mv.promote)
+                {
                     self.position.take_back();
                     has_legal_moves = true;
                     break;
@@ -202,7 +205,7 @@ impl ChessEngine {
         }
 
         let fen = &lines[0];
-        self.load_fen(fen)?;
+        self.position.load_fen(fen)?;
 
         self.display_board();
         self.position.new_position();
@@ -215,113 +218,6 @@ impl ChessEngine {
             println!("Black to move");
         }
         println!(" {} ", fen);
-
-        Ok(())
-    }
-
-    fn load_fen(&mut self, fen: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Reset board
-        self.position.board = chess_engine::types::Board::empty();
-
-        let parts: Vec<&str> = fen.split(' ').collect();
-        if parts.is_empty() {
-            return Err("Invalid FEN string".into());
-        }
-
-        let board_part = parts[0];
-        let mut square_idx = 0;
-
-        for ch in board_part.chars() {
-            if ch == '/' {
-                continue;
-            }
-
-            if ch.is_ascii_digit() {
-                let empty_squares = ch.to_digit(10).unwrap() as usize;
-                square_idx += empty_squares;
-                continue;
-            }
-
-            if square_idx >= 64 {
-                break;
-            }
-
-            let flipped_idx = 63 - square_idx; // Flip for proper board representation
-            let square = Square::try_from(flipped_idx as u8)?;
-
-            let (piece, side) = match ch {
-                'K' => (Piece::King, Side::White),
-                'Q' => (Piece::Queen, Side::White),
-                'R' => (Piece::Rook, Side::White),
-                'B' => (Piece::Bishop, Side::White),
-                'N' => (Piece::Knight, Side::White),
-                'P' => (Piece::Pawn, Side::White),
-                'k' => (Piece::King, Side::Black),
-                'q' => (Piece::Queen, Side::Black),
-                'r' => (Piece::Rook, Side::Black),
-                'b' => (Piece::Bishop, Side::Black),
-                'n' => (Piece::Knight, Side::Black),
-                'p' => (Piece::Pawn, Side::Black),
-                _ => return Err(format!("Invalid piece character: {}", ch).into()),
-            };
-
-            self.position.board.add_piece(side, piece, square);
-            square_idx += 1;
-        }
-
-        // Parse side to move
-        if parts.len() > 1 {
-            match parts[1] {
-                "w" => {
-                    self.position.side = Side::White;
-                    self.position.other_side = Side::Black;
-                }
-                "b" => {
-                    self.position.side = Side::Black;
-                    self.position.other_side = Side::White;
-                }
-                _ => {}
-            }
-        }
-
-        // Parse castling rights
-        if parts.len() > 2 {
-            self.position.castle = 0;
-            for ch in parts[2].chars() {
-                match ch {
-                    'K' => {
-                        if self.position.board.bit_pieces[0][Piece::King as usize]
-                            .is_bit_set(Square::E1)
-                        {
-                            self.position.castle |= 1;
-                        }
-                    }
-                    'Q' => {
-                        if self.position.board.bit_pieces[0][Piece::King as usize]
-                            .is_bit_set(Square::E1)
-                        {
-                            self.position.castle |= 2;
-                        }
-                    }
-                    'k' => {
-                        if self.position.board.bit_pieces[1][Piece::King as usize]
-                            .is_bit_set(Square::E8)
-                        {
-                            self.position.castle |= 4;
-                        }
-                    }
-                    'q' => {
-                        if self.position.board.bit_pieces[1][Piece::King as usize]
-                            .is_bit_set(Square::E8)
-                        {
-                            self.position.castle |= 8;
-                        }
-                    }
-                    '-' => {}
-                    _ => {}
-                }
-            }
-        }
 
         Ok(())
     }
@@ -507,39 +403,17 @@ impl ChessEngine {
 
                     if let Some(move_idx) = self.parse_move(command) {
                         if let Some(mv) = self.position.move_list[move_idx] {
-                            if !self.position.make_move(mv.from, mv.to) {
+                            if !self
+                                .position
+                                .make_move_with_promotion(mv.from, mv.to, mv.promote)
+                            {
                                 println!("Illegal move.");
                                 println!("{}", command);
                                 continue;
                             }
 
-                            // Handle promotion
-                            if command.len() > 4 {
-                                let promote_char = command.chars().nth(4);
-                                if let Some(ch) = promote_char {
-                                    if mv.to as usize / 8 == 0 || mv.to as usize / 8 == 7 {
-                                        // Remove the auto-promoted queen and add the requested piece
-                                        self.position.board.remove_piece(
-                                            self.position.other_side,
-                                            Piece::Queen,
-                                            mv.to,
-                                        );
-
-                                        let new_piece = match ch.to_ascii_lowercase() {
-                                            'n' => Piece::Knight,
-                                            'b' => Piece::Bishop,
-                                            'r' => Piece::Rook,
-                                            _ => Piece::Queen,
-                                        };
-
-                                        self.position.board.add_piece(
-                                            self.position.other_side,
-                                            new_piece,
-                                            mv.to,
-                                        );
-                                    }
-                                }
-                            }
+                            // Note: Promotion is now handled in make_move_with_promotion
+                            // The old manual promotion code has been removed
                         }
                     } else {
                         println!("Illegal move.");
@@ -711,7 +585,10 @@ impl ChessEngine {
 
                     if let Some(move_idx) = self.parse_move(line) {
                         if let Some(mv) = self.position.move_list[move_idx] {
-                            if !self.position.make_move(mv.from, mv.to) {
+                            if !self
+                                .position
+                                .make_move_with_promotion(mv.from, mv.to, mv.promote)
+                            {
                                 println!("Error (unknown command): {}", command);
                             } else {
                                 self.position.ply = 0;
