@@ -32,8 +32,9 @@ pub fn initialize_zobrist_hash_tables() {
     for side in Side::iter() {
         for piece in Piece::iter() {
             if piece == Piece::Empty {
-                continue; // Skip empty pieces
+                continue;
             }
+
             for square in Square::iter() {
                 hash_table[side as usize][piece as usize][square as usize] =
                     random(HASH_SIZE as u64);
