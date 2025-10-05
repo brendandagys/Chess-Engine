@@ -17,7 +17,7 @@ pub struct Position {
     // DYNAMIC
     pub move_list: [Option<Move>; MOVE_STACK],
     pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
-    game_list: [Option<Game>; GAME_STACK],
+    pub game_list: [Option<Game>; GAME_STACK],
     pub fifty: u8,    // Moves since last pawn move or capture (up to 100-ply)
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
     pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
@@ -582,6 +582,79 @@ impl Position {
         }
     }
 
+    /// Displays the chess board with colored squares and pieces
+    ///
+    /// # Arguments
+    /// * `flip` - If true, displays from black's perspective (a1 at top-right)
+    ///            If false, displays from white's perspective (a1 at bottom-left)
+    pub fn display_board(&self, flip: bool) {
+        // Board color pattern for display (0 = dark, 1 = light)
+        const BOARD_COLOR: [u8; 64] = [
+            1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0,
+            1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1,
+            0, 1, 0, 1, 0, 1,
+        ];
+
+        // Character representation of pieces
+        const PIECE_CHAR: [char; 7] = ['P', 'N', 'B', 'R', 'Q', 'K', ' '];
+
+        // Terminal color codes for better display
+        let reset = "\x1b[0m";
+        let dark_square = "\x1b[48;5;94m"; // Dark brown background
+        let light_square = "\x1b[48;5;223m"; // Light brown background
+        let text_color = "\x1b[97m"; // White text
+
+        println!();
+
+        for rank in 0..8 {
+            let display_rank = if !flip { 7 - rank } else { rank };
+
+            // Print rank number at the start of each row
+            print!("{} ", display_rank + 1);
+
+            for file in 0..8 {
+                let display_file = if !flip { file } else { 7 - file };
+                let i = (display_rank * 8 + display_file) as usize;
+
+                let piece = self.board.value[i];
+                let is_white_piece = self.board.bit_units[Side::White as usize]
+                    .is_bit_set(Square::try_from(i as u8).unwrap());
+
+                // Set background color based on square color
+                let bg_color = if BOARD_COLOR[i] == 0 {
+                    dark_square
+                } else {
+                    light_square
+                };
+
+                print!("{}{}", bg_color, text_color);
+
+                match piece {
+                    Piece::Empty => print!("   "),
+                    _ => {
+                        let piece_char = PIECE_CHAR[piece as usize];
+                        if is_white_piece {
+                            print!(" {} ", piece_char);
+                        } else {
+                            print!(" {} ", piece_char.to_lowercase());
+                        }
+                    }
+                }
+
+                print!("{}", reset);
+            }
+
+            // Line break at the end of each rank
+            println!();
+        }
+
+        if !flip {
+            println!("\n   a  b  c  d  e  f  g  h\n");
+        } else {
+            println!("\n   h  g  f  e  d  c  b  a\n");
+        }
+    }
+
     fn display_move(from: Square, to: Square) {
         [from, to].iter().for_each(|&square| {
             print!(
@@ -797,7 +870,7 @@ impl Position {
             return;
         }
 
-        let last_game_entry = self.game_list[self.ply_from_start_of_game - 1];
+        let last_game_entry = self.game_list[self.ply_from_start_of_game];
 
         if let Some(entry) = last_game_entry {
             let last_square_opponent_moved_from = entry.from;
@@ -816,13 +889,12 @@ impl Position {
                             .expect("Failed to convert square index to Square"),
                     )
                 {
+                    let our_pawn_square = (last_square_opponent_moved_to as i32 - 1) as usize;
                     self.add_capture(
                         (last_square_opponent_moved_to as i32 - 1)
                             .try_into()
                             .expect("Failed to convert square index to Square"),
-                        (last_square_opponent_moved_to as i32
-                            + self.pawn_plus_index[side as usize]
-                                [last_square_opponent_moved_to as usize])
+                        self.pawn_right_index[side as usize][our_pawn_square]
                             .try_into()
                             .expect("Failed to convert square index to Square"),
                         10,
@@ -838,13 +910,12 @@ impl Position {
                             .expect("Failed to convert square index to Square"),
                     )
                 {
+                    let our_pawn_square = (last_square_opponent_moved_to as i32 + 1) as usize;
                     self.add_capture(
                         (last_square_opponent_moved_to as i32 + 1)
                             .try_into()
                             .expect("Failed to convert square index to Square"),
-                        (last_square_opponent_moved_to as i32
-                            + self.pawn_plus_index[side as usize]
-                                [last_square_opponent_moved_to as usize])
+                        self.pawn_left_index[side as usize][our_pawn_square]
                             .try_into()
                             .expect("Failed to convert square index to Square"),
                         10,
@@ -1071,108 +1142,106 @@ impl Position {
                     &mut move_count,
                 );
             }
+        }
 
-            // Bishops, rooks, queens
-            for (piece, bit_moves, capture_score) in [
-                (Piece::Bishop, self.bit_bishop_moves, BISHOP_CAPTURE_SCORE),
-                (Piece::Rook, self.bit_rook_moves, ROOK_CAPTURE_SCORE),
-                (Piece::Queen, self.bit_queen_moves, QUEEN_CAPTURE_SCORE),
-            ] {
-                let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
+        // Bishops, rooks, queens
+        for (piece, bit_moves, capture_score) in [
+            (Piece::Bishop, self.bit_bishop_moves, BISHOP_CAPTURE_SCORE),
+            (Piece::Rook, self.bit_rook_moves, ROOK_CAPTURE_SCORE),
+            (Piece::Queen, self.bit_queen_moves, QUEEN_CAPTURE_SCORE),
+        ] {
+            let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
 
-                while pieces.0 != 0 {
-                    let square_from = pieces.next_bit_mut();
-                    let mut possible_moves = BitBoard(bit_moves[square_from as usize].0);
+            while pieces.0 != 0 {
+                let square_from = pieces.next_bit_mut();
+                let mut possible_moves = BitBoard(bit_moves[square_from as usize].0);
 
-                    // Remove squares blocked by friendly units and squares after them
-                    let mut moves_to_self_occupied_squares =
-                        BitBoard(possible_moves.0 & self.board.bit_units[side as usize].0);
+                // Remove squares blocked by friendly units and squares after them
+                let mut moves_to_self_occupied_squares =
+                    BitBoard(possible_moves.0 & self.board.bit_units[side as usize].0);
 
-                    while moves_to_self_occupied_squares.0 != 0 {
-                        let square_to = moves_to_self_occupied_squares.next_bit_mut();
+                while moves_to_self_occupied_squares.0 != 0 {
+                    let square_to = moves_to_self_occupied_squares.next_bit_mut();
 
-                        moves_to_self_occupied_squares.0 &=
-                            self.bit_after[square_from as usize][square_to as usize].0;
+                    moves_to_self_occupied_squares.0 &=
+                        self.bit_after[square_from as usize][square_to as usize].0;
 
-                        possible_moves.0 &=
-                            self.bit_after[square_from as usize][square_to as usize].0;
-                    }
+                    possible_moves.0 &= self.bit_after[square_from as usize][square_to as usize].0;
+                }
 
-                    let mut possible_captures = BitBoard(
-                        possible_moves.0 & self.board.bit_units[side.opponent() as usize].0,
-                    );
+                let mut possible_captures =
+                    BitBoard(possible_moves.0 & self.board.bit_units[side.opponent() as usize].0);
 
-                    while possible_captures.0 != 0 {
-                        let square_to = possible_captures.next_bit_mut();
+                while possible_captures.0 != 0 {
+                    let square_to = possible_captures.next_bit_mut();
 
-                        if (self.bit_between[square_from as usize][square_to as usize].0
-                            & self.board.bit_all.0)
-                            == 0
-                        {
-                            self.add_capture(
-                                square_from
-                                    .try_into()
-                                    .expect("Failed to convert square_from to Square"),
-                                square_to
-                                    .try_into()
-                                    .expect("Failed to convert square_to to Square"),
-                                capture_score[self.board.value[square_to as usize] as usize]
-                                    as isize,
-                                &mut move_count,
-                            );
-                        }
-
-                        possible_captures.0 &=
-                            self.bit_after[square_from as usize][square_to as usize].0;
-
-                        possible_moves.0 &=
-                            self.bit_after[square_from as usize][square_to as usize].0;
-                    }
-
-                    while possible_moves.0 != 0 {
-                        let square_to = possible_moves.next_bit_mut();
-
-                        self.add_move(
+                    if (self.bit_between[square_from as usize][square_to as usize].0
+                        & self.board.bit_all.0)
+                        == 0
+                    {
+                        self.add_capture(
                             square_from
                                 .try_into()
                                 .expect("Failed to convert square_from to Square"),
                             square_to
                                 .try_into()
                                 .expect("Failed to convert square_to to Square"),
+                            capture_score[self.board.value[square_to as usize] as usize] as isize,
                             &mut move_count,
                         );
                     }
+
+                    possible_captures.0 &=
+                        self.bit_after[square_from as usize][square_to as usize].0;
+
+                    possible_moves.0 &= self.bit_after[square_from as usize][square_to as usize].0;
+                }
+
+                while possible_moves.0 != 0 {
+                    let square_to = possible_moves.next_bit_mut();
+
+                    self.add_move(
+                        square_from
+                            .try_into()
+                            .expect("Failed to convert square_from to Square"),
+                        square_to
+                            .try_into()
+                            .expect("Failed to convert square_to to Square"),
+                        &mut move_count,
+                    );
                 }
             }
-
-            // King
-            let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
-
-            self.generate_king_captures(side, king_square, &mut move_count);
-
-            let mut king_moves =
-                BitBoard(self.bit_king_moves[king_square as usize].0 & !self.board.bit_all.0);
-
-            while king_moves.0 != 0 {
-                let square_to = king_moves.next_bit_mut();
-
-                self.add_move(
-                    king_square
-                        .try_into()
-                        .expect("Failed to convert king_square to Square"),
-                    square_to
-                        .try_into()
-                        .expect("Failed to convert square_to to Square"),
-                    &mut move_count,
-                );
-            }
-
-            self.first_move[self.ply + 1] = move_count;
         }
+
+        // King
+        let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
+
+        self.generate_king_captures(side, king_square, &mut move_count);
+
+        let mut king_moves =
+            BitBoard(self.bit_king_moves[king_square as usize].0 & !self.board.bit_all.0);
+
+        while king_moves.0 != 0 {
+            let square_to = king_moves.next_bit_mut();
+
+            self.add_move(
+                king_square
+                    .try_into()
+                    .expect("Failed to convert king_square to Square"),
+                square_to
+                    .try_into()
+                    .expect("Failed to convert square_to to Square"),
+                &mut move_count,
+            );
+        }
+
+        self.first_move[self.ply + 1] = move_count;
     }
 
     pub fn generate_captures(&mut self, side: Side) {
         let mut move_count = self.first_move[self.ply];
+
+        self.generate_en_passant_moves(side, &mut move_count);
 
         // Pawns
         let mut left_pawn_captures;

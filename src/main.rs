@@ -5,15 +5,6 @@ use chess_engine::zobrist_hash::initialize_zobrist_hash_tables;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
 
-// Board color pattern for display (0 = dark, 1 = light)
-const BOARD_COLOR: [u8; 64] = [
-    1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1,
-    1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1,
-];
-
-// Character representation of pieces
-const PIECE_CHAR: [char; 7] = ['P', 'N', 'B', 'R', 'Q', 'K', ' '];
-
 struct ChessEngine {
     position: Position,
     computer_side: Option<Side>,
@@ -69,66 +60,7 @@ impl ChessEngine {
     }
 
     fn display_board(&self) {
-        // Terminal color codes for better display
-        let reset = "\x1b[0m";
-        let dark_square = "\x1b[48;5;94m"; // Dark brown background
-        let light_square = "\x1b[48;5;223m"; // Light brown background
-        let text_color = "\x1b[97m"; // White text for better readability
-
-        println!();
-
-        for j in 0..64 {
-            let i = if !self.flip {
-                // Use FLIPPED_BOARD_SQUARE or implement flip mapping
-                63 - j // Simple flip for now
-            } else {
-                j
-            };
-
-            // Print rank number at the start of each row
-            if j % 8 == 0 {
-                let rank = if !self.flip { 8 - (j / 8) } else { (j / 8) + 1 };
-                print!("{} ", rank);
-            }
-
-            let piece = self.position.board.value[i];
-            let is_white_piece = self.position.board.bit_units[Side::White as usize]
-                .is_bit_set(Square::try_from(i as u8).unwrap());
-
-            // Set background color based on square color
-            let bg_color = if BOARD_COLOR[i] == 0 {
-                dark_square
-            } else {
-                light_square
-            };
-
-            print!("{}{}", bg_color, text_color);
-
-            match piece {
-                Piece::Empty => print!("   "),
-                _ => {
-                    let piece_char = PIECE_CHAR[piece as usize];
-                    if is_white_piece {
-                        print!(" {} ", piece_char);
-                    } else {
-                        print!(" {} ", piece_char.to_lowercase());
-                    }
-                }
-            }
-
-            print!("{}", reset);
-
-            // Line breaks at the end of each row
-            if (j + 1) % 8 == 0 {
-                println!();
-            }
-        }
-
-        if !self.flip {
-            println!("\n   a  b  c  d  e  f  g  h\n");
-        } else {
-            println!("\n   h  g  f  e  d  c  b  a\n");
-        }
+        self.position.display_board(self.flip);
     }
 
     fn parse_move(&self, move_str: &str) -> Option<usize> {
