@@ -1858,7 +1858,7 @@ impl Position {
     /// Adds a score for each unit on the board.
     /// Optionally adds a score for king position if opponent has a queen.
     /// Returns side-to-move's score minus opponent's score.
-    fn evaluate_position(&self) -> i32 {
+    pub fn evaluate_position(&self) -> i32 {
         let mut score = [0, 0];
 
         let mut queenside_pawns = [0, 0];
@@ -1939,12 +1939,12 @@ impl Position {
                     & self.mask_kingside.0
                     != 0
                 {
-                    score[side as usize] += kingside_pawns[king_square as usize]
+                    score[side as usize] += kingside_pawns[side as usize]
                 } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
                     & self.mask_queenside.0
                     != 0
                 {
-                    score[side as usize] += queenside_pawns[king_square as usize]
+                    score[side as usize] += queenside_pawns[side as usize]
                 }
             }
         }
