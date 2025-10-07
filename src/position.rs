@@ -1531,15 +1531,33 @@ impl Position {
         while i >= self.fifty as usize && i >= 2 {
             i -= 2;
             if let Some(game) = self.game_list[i] {
-                if game.hash == self.board.hash.current_key
-                    && game.lock == self.board.hash.current_lock
-                {
+                if game.hash == self.board.hash.current_key {
                     count += 1;
                 }
             }
         }
 
         count
+    }
+
+    /// Get the en passant file (0-7 for files A-H) from the last move, if available
+    fn get_en_passant_file(&self) -> Option<u8> {
+        if self.ply_from_start_of_game == 0 {
+            return None;
+        }
+
+        if let Some(last_game) = self.game_list[self.ply_from_start_of_game] {
+            let from = last_game.from;
+            let to = last_game.to;
+
+            // Check if a pawn just made a double-push
+            if self.board.value[to as usize] == Piece::Pawn && (from as i32 - to as i32).abs() == 16
+            {
+                return Some(COLUMN[to as usize]);
+            }
+        }
+
+        None
     }
 
     /// Make a move and return success state.
@@ -1614,10 +1632,20 @@ impl Position {
         game.fifty = self.fifty;
         game.castle = self.castle;
         game.hash = self.board.hash.current_key;
-        game.lock = self.board.hash.current_lock;
+
+        // Store old en passant file for hash update
+        let old_en_passant_file = self.get_en_passant_file();
+        game.en_passant_file = old_en_passant_file;
 
         // Update the castle permissions
+        let old_castle = self.castle;
         self.castle &= CASTLE_MASK[from as usize] & CASTLE_MASK[to as usize];
+
+        if old_castle != self.castle {
+            self.board
+                .hash
+                .update_castle_rights(old_castle, self.castle);
+        }
 
         self.ply += 1;
         self.ply_from_start_of_game += 1;
@@ -1667,8 +1695,23 @@ impl Position {
         self.side = self.side.opponent();
         self.other_side = self.other_side.opponent();
 
-        // Update the game list entry
+        self.board.hash.toggle_side_to_move();
+
         self.game_list[self.ply_from_start_of_game] = Some(game);
+
+        // Determine new en passant file after this move
+        let new_en_passant_file = if self.board.value[to as usize] == Piece::Pawn
+            && (from as i32 - to as i32).abs() == 16
+        {
+            Some(COLUMN[to as usize])
+        } else {
+            None
+        };
+
+        // Update en passant hash if it changed
+        self.board
+            .hash
+            .update_en_passant(old_en_passant_file, new_en_passant_file);
 
         let king_square = self.board.bit_pieces[original_side as usize][Piece::King as usize]
             .next_bit()
@@ -1686,17 +1729,33 @@ impl Position {
     pub fn take_back_move(&mut self) {
         let game = self.game_list[self.ply_from_start_of_game].expect("No game to take back");
 
+        let current_en_passant_file = self.get_en_passant_file();
+
         self.side = self.side.opponent();
         self.other_side = self.other_side.opponent();
+
+        self.board.hash.toggle_side_to_move();
+
         self.ply -= 1;
         self.ply_from_start_of_game -= 1;
 
         let from = game.from;
         let to = game.to;
 
-        // Restore castle permissions and fifty-move counter
+        let old_castle = self.castle;
         self.castle = game.castle;
+
+        if old_castle != self.castle {
+            self.board
+                .hash
+                .update_castle_rights(old_castle, self.castle);
+        }
+
         self.fifty = game.fifty;
+
+        self.board
+            .hash
+            .update_en_passant(current_en_passant_file, game.en_passant_file);
 
         // En passant
         if self.board.value[to as usize] == Piece::Pawn
@@ -1769,6 +1828,8 @@ impl Position {
         self.side = self.side.opponent();
         self.other_side = self.other_side.opponent();
 
+        self.board.hash.toggle_side_to_move();
+
         // Undo upon check
         if self.is_square_attacked_by_side(
             original_opponent_side,
@@ -1787,6 +1848,8 @@ impl Position {
 
         self.side = self.side.opponent();
         self.other_side = self.other_side.opponent();
+
+        self.board.hash.toggle_side_to_move();
 
         self.ply -= 1;
         self.ply_from_start_of_game -= 1;
@@ -1970,17 +2033,20 @@ impl Position {
         self.best_move_to = self.hash_to;
 
         for _ in 0..depth {
-            if !self
-                .board
-                .hash
-                .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
-            {
+            if let Some(entry) = self.board.hash.probe() {
+                if let Some(move_) = entry.best_move {
+                    self.hash_from = Some(move_.from);
+                    self.hash_to = Some(move_.to);
+                } else {
+                    break;
+                }
+            } else {
                 break;
             }
 
             print!(" ");
             Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
-            // Note: Hash table doesn't store promotion piece, so we use None which defaults to Queen
+            // NOTE: Hash table doesn't currently store promotion piece, so we use None which defaults to Queen
             self.make_move_with_promotion(self.hash_from.unwrap(), self.hash_to.unwrap(), None);
         }
 
@@ -2052,7 +2118,7 @@ impl Position {
         total_score
     }
 
-    fn capture_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
+    fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
         self.nodes += 1;
         let score = self.evaluate_position();
 
@@ -2097,9 +2163,10 @@ impl Position {
         if score > alpha {
             if score >= beta {
                 if best_score > 0 {
-                    self.board.hash.update_position_best_move(
-                        self.side,
+                    self.board.hash.store_move(
                         self.move_list[best_move_index as usize].unwrap(),
+                        0, // quiescence doesn't have depth
+                        score,
                     );
                 }
 
@@ -2148,9 +2215,7 @@ impl Position {
 
         while cur >= end {
             if let Some(game) = self.game_list[cur] {
-                if game.hash == self.board.hash.current_key
-                    && game.lock == self.board.hash.current_lock
-                {
+                if game.hash == self.board.hash.current_key {
                     return true;
                 }
             }
@@ -2175,7 +2240,7 @@ impl Position {
 
         // If depth has run out, the capture search is performed
         if depth == 0 {
-            return self.capture_search(alpha, beta);
+            return self.quiescent_search(alpha, beta);
         }
 
         self.nodes += 1;
@@ -2203,12 +2268,12 @@ impl Position {
         self.generate_moves_and_captures(self.side);
 
         // If the position is in the hash table, look up its best move
-        if self
-            .board
-            .hash
-            .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
-        {
-            self.set_hash_move();
+        if let Some(entry) = self.board.hash.probe() {
+            if let Some(hash_move) = entry.best_move {
+                self.hash_from = Some(hash_move.from);
+                self.hash_to = Some(hash_move.to);
+                self.set_hash_move();
+            }
         }
 
         let mut legal_moves_count = 0;
@@ -2275,7 +2340,7 @@ impl Position {
                             depth as isize;
                     }
 
-                    self.board.hash.update_position_best_move(self.side, move_);
+                    self.board.hash.store_move(move_, depth as u8, score);
                     return beta;
                 }
 
@@ -2304,7 +2369,7 @@ impl Position {
 
         self.board
             .hash
-            .update_position_best_move(self.side, best_move.unwrap());
+            .store_move(best_move.unwrap(), depth as u8, alpha);
 
         // Store the best move found at root level (ply 0)
         if self.ply == 0 {
@@ -2384,12 +2449,12 @@ impl Position {
                 self.nodes,
             );
 
-            if self
-                .board
-                .hash
-                .lookup(self.side, &mut self.hash_from, &mut self.hash_to)
-            {
-                self.display_principal_variation(depth);
+            if let Some(entry) = self.board.hash.probe() {
+                if let Some(hash_move) = entry.best_move {
+                    self.hash_from = Some(hash_move.from);
+                    self.hash_to = Some(hash_move.to);
+                    self.display_principal_variation(depth);
+                }
             } else {
                 // If hash lookup fails, use the best move from search
                 self.hash_from = self.best_move_from;
@@ -2438,7 +2503,7 @@ impl Position {
         let (bit_queen_moves, bit_rook_moves, bit_bishop_moves) =
             Self::get_queen_rook_bishop_moves();
 
-        Self {
+        let mut mut_position = Self {
             // Dynamic
             move_list: [None; MOVE_STACK],
             first_move,
@@ -2497,7 +2562,13 @@ impl Position {
             pawn_left_index,  // "Left" for both sides is toward A file
             pawn_right_index, // "Right" for both sides is toward H file
             ranks: Self::get_ranks(),
-        }
+        };
+
+        // Initialize hash with castle rights (all castling available: 0b1111)
+        mut_position.board.hash.update_castle_rights(0, 0b1111);
+        // White to move by default, so no need to toggle side-to-move
+
+        mut_position
     }
 
     /// Load a position from a FEN (Forsyth-Edwards Notation) string.
@@ -2747,8 +2818,23 @@ impl Position {
                 fifty: self.fifty,
                 castle: self.castle,
                 hash: self.board.hash.current_key,
-                lock: self.board.hash.current_lock,
+                en_passant_file: Some(COLUMN[pawn_to as usize]),
             });
+        }
+
+        // Initialize hash with castle rights
+        self.board.hash.update_castle_rights(0, self.castle);
+
+        // Initialize hash with side-to-move (if Black to move, toggle the hash)
+        if self.side == Side::Black {
+            self.board.hash.toggle_side_to_move();
+        }
+
+        // Initialize hash with en passant file if present
+        if let Some((_, pawn_to)) = ep_game_entry {
+            self.board
+                .hash
+                .update_en_passant(None, Some(COLUMN[pawn_to as usize]));
         }
 
         Ok(())

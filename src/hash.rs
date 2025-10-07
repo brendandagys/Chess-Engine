@@ -1,43 +1,65 @@
 use crate::{
-    constants::{MAX_HASH, NUM_SIDES},
+    constants::NUM_HASH_SLOTS,
     types::{Move, Piece, Side, Square},
-    zobrist_hash::{ZOBRIST_HASH_TABLE, ZOBRIST_LOCK_TABLE, initialize_zobrist_hash_tables},
+    zobrist_hash::{
+        ZOBRIST_CASTLE_HASH, ZOBRIST_EN_PASSANT_HASH, ZOBRIST_HASH_TABLE,
+        ZOBRIST_SIDE_TO_MOVE_HASH, initialize_zobrist_hash_tables,
+    },
 };
 
+/// An entry in the transposition table storing the best move for a position
 #[derive(Clone, Copy)]
-pub struct HashPosition {
-    pub hash_lock: u64,
-    pub from: Square, // Best move found for position
-    pub to: Square,   // Best move found for position
+pub struct HashEntry {
+    /// The hash key for collision detection (instead of separate "lock")
+    pub hash_key: u64,
+    /// Best move found for this position
+    pub best_move: Option<Move>,
+    /// Search depth at which this entry was stored
+    pub depth: u8,
+    /// Score/evaluation for this position
+    pub score: i32,
 }
 
-impl Default for HashPosition {
+impl Default for HashEntry {
     fn default() -> Self {
         Self {
-            hash_lock: 0,
-            from: Square::A1,
-            to: Square::A1,
+            hash_key: 0,
+            best_move: None,
+            depth: 0,
+            score: 0,
         }
     }
 }
 
+/// Transposition table for storing positions and their best moves
 pub struct HashTable {
-    positions: Vec<HashPosition>,
+    entries: Vec<HashEntry>,
 }
 
 impl HashTable {
     pub fn new() -> Self {
         Self {
-            positions: vec![HashPosition::default(); MAX_HASH],
+            entries: vec![HashEntry::default(); NUM_HASH_SLOTS],
         }
+    }
+
+    /// Get an entry at the given index
+    fn get(&self, index: usize) -> &HashEntry {
+        &self.entries[index]
+    }
+
+    /// Get a mutable entry at the given index
+    fn get_mut(&mut self, index: usize) -> &mut HashEntry {
+        &mut self.entries[index]
     }
 }
 
+/// Zobrist hash manager for incremental position hashing
 pub struct Hash {
+    /// Current Zobrist hash key for the position
     pub current_key: u64,
-    pub current_lock: u64,
-    pub collisions: u64,
-    hash_tables: [HashTable; NUM_SIDES],
+    /// Transposition table
+    hash_table: HashTable,
 }
 
 impl Hash {
@@ -46,58 +68,79 @@ impl Hash {
 
         Self {
             current_key: 0,
-            current_lock: 0,
-            collisions: 0,
-            hash_tables: [HashTable::new(), HashTable::new()],
+            hash_table: HashTable::new(),
         }
     }
 
-    /// Add an entry to the hash table, possibly overwriting
-    pub fn update_position_best_move(&mut self, side: Side, move_: Move) {
-        let index = (self.current_key as usize) % MAX_HASH;
-        let entry = &mut self.hash_tables[side as usize].positions[index];
+    /// Store a move in the hash table for the current position
+    pub fn store_move(&mut self, move_: Move, depth: u8, score: i32) {
+        let index = (self.current_key as usize) % NUM_HASH_SLOTS;
+        let entry = self.hash_table.get_mut(index);
 
-        entry.hash_lock = self.current_lock;
-        entry.from = move_.from;
-        entry.to = move_.to;
+        if entry.hash_key != self.current_key || depth >= entry.depth {
+            entry.hash_key = self.current_key;
+            entry.best_move = Some(move_);
+            entry.depth = depth;
+            entry.score = score;
+        }
     }
 
-    /// Update the current key and lock. Called when pieces are moved on the board.
-    pub fn update_position_hash_key_and_lock(&mut self, side: Side, piece: Piece, square: Square) {
-        // Skip Empty pieces as they're not included in the hash tables
+    /// Look up the hash entry for the current position, if available
+    pub fn probe(&self) -> Option<&HashEntry> {
+        let index = (self.current_key as usize) % NUM_HASH_SLOTS;
+        let entry = self.hash_table.get(index);
+
+        // Verify this is the same position (collision detection) and has a move stored
+        if entry.hash_key == self.current_key && entry.best_move.is_some() {
+            Some(entry)
+        } else {
+            None
+        }
+    }
+
+    /// Update hash for a piece on a square. Call this twice per move (from/to).
+    pub fn toggle_piece(&mut self, side: Side, piece: Piece, square: Square) {
         if piece == Piece::Empty {
             return;
         }
 
-        if let (Some(hash_table), Some(lock_table)) =
-            (ZOBRIST_HASH_TABLE.get(), ZOBRIST_LOCK_TABLE.get())
-        {
+        if let Some(hash_table) = ZOBRIST_HASH_TABLE.get() {
             self.current_key ^= hash_table[side as usize][piece as usize][square as usize];
-            self.current_lock ^= lock_table[side as usize][piece as usize][square as usize];
         }
     }
 
-    pub fn lookup(
-        &mut self,
-        side: Side,
-        hash_from: &mut Option<Square>,
-        hash_to: &mut Option<Square>,
-    ) -> bool {
-        if let Some(table) = self.hash_tables.get(side as usize) {
-            let key = (self.current_key as usize) % MAX_HASH;
-            let entry = table.positions[key];
+    /// Toggle side-to-move in the hash. Call this when switching turns.
+    pub fn toggle_side_to_move(&mut self) {
+        if let Some(&hash_key) = ZOBRIST_SIDE_TO_MOVE_HASH.get() {
+            self.current_key ^= hash_key;
+        }
+    }
 
-            if entry.hash_lock != self.current_lock {
-                self.collisions += 1;
-                return false;
-            }
-
-            *hash_from = Some(entry.from);
-            *hash_to = Some(entry.to);
-
-            return true;
+    /// Update castle rights in the hash when they change
+    pub fn update_castle_rights(&mut self, old_castle: u8, new_castle: u8) {
+        if old_castle == new_castle {
+            return;
         }
 
-        false
+        if let Some(hash_table) = ZOBRIST_CASTLE_HASH.get() {
+            self.current_key ^= hash_table[old_castle as usize];
+            self.current_key ^= hash_table[new_castle as usize];
+        }
+    }
+
+    /// Update en passant file in the hash when it changes
+    pub fn update_en_passant(&mut self, old_file: Option<u8>, new_file: Option<u8>) {
+        if old_file == new_file {
+            return;
+        }
+
+        if let Some(hash_table) = ZOBRIST_EN_PASSANT_HASH.get() {
+            if let Some(file) = old_file {
+                self.current_key ^= hash_table[file as usize];
+            }
+            if let Some(file) = new_file {
+                self.current_key ^= hash_table[file as usize];
+            }
+        }
     }
 }

@@ -250,10 +250,6 @@ impl ChessEngine {
                     continue;
                 };
 
-                println!(" collisions {} ", self.position.board.hash.collisions);
-                println!();
-                self.position.board.hash.collisions = 0;
-
                 println!(
                     "Computer's move: {}",
                     Self::move_string(hash_from, hash_to, None)

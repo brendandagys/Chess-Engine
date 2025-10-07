@@ -23,8 +23,11 @@ pub const HASH_SCORE: i32 = 100_000_000;
 pub const CAPTURE_SCORE: i32 = 10_000_000;
 
 // Hash table configuration
-pub const MAX_HASH: usize = 5_000_000;
-pub const HASH_SIZE: usize = 5_000_000;
+
+// You could use a power-of-2 size for faster modulo (bitwise AND instead of %)
+// const NUM_HASH_SLOTS: usize = 1 << 22; // 4,194,304 (2^22)
+// let index = (self.current_key as usize) & (NUM_HASH_SLOTS - 1); // Faster than %
+pub const NUM_HASH_SLOTS: usize = 5_000_000;
 
 #[rustfmt::skip]
 pub const INIT_COLOR: [u8; NUM_SQUARES] = [

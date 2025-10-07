@@ -245,11 +245,11 @@ pub struct Game {
     pub from: Square,
     pub to: Square,
     pub promote: Option<Piece>,
-    pub capture: Piece, // Can be an empty piece
-    pub fifty: u8,      // Moves since last pawn move or capture (up to 100-ply)
-    pub castle: u8,     // Castle permissions
-    pub hash: u64,      // Number to help test for repetition
-    pub lock: u64,      // Number to help test for repetition
+    pub capture: Piece,              // Can be an empty piece
+    pub fifty: u8,                   // Moves since last pawn move or capture (up to 100-ply)
+    pub castle: u8,                  // Castle permissions
+    pub hash: u64, // Zobrist hash key for position comparison and repetition detection
+    pub en_passant_file: Option<u8>, // File (0-7) where en passant is available, if any
 }
 
 impl Game {
@@ -262,7 +262,7 @@ impl Game {
             fifty: 0,
             castle: 0,
             hash: 0,
-            lock: 0,
+            en_passant_file: None,
         }
     }
 }
@@ -292,7 +292,7 @@ impl Board {
             if piece != Piece::Empty && side_val < 2 {
                 let side = Side::try_from(side_val).unwrap();
                 board[square as usize] = piece;
-                hash.update_position_hash_key_and_lock(side, piece, square);
+                hash.toggle_piece(side, piece, square);
                 bit_pieces[side as usize][piece as usize].set_bit(square);
                 bit_units[side as usize].set_bit(square);
                 bit_all.set_bit(square);
@@ -319,28 +319,23 @@ impl Board {
     }
 
     pub fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
-        // Skip Empty pieces as they don't have bitboards
         if piece == Piece::Empty {
             return;
         }
 
         self.value[square as usize] = piece;
-        self.hash
-            .update_position_hash_key_and_lock(side, piece, square);
+        self.hash.toggle_piece(side, piece, square);
         self.bit_pieces[side as usize][piece as usize].set_bit(square);
         self.bit_units[side as usize].set_bit(square);
         self.bit_all.set_bit(square);
     }
 
     pub fn remove_piece(&mut self, side: Side, piece: Piece, square: Square) {
-        // Skip Empty pieces as they don't have bitboards
         if piece == Piece::Empty {
             return;
         }
 
-        // XOR will remove the piece
-        self.hash
-            .update_position_hash_key_and_lock(side, piece, square);
+        self.hash.toggle_piece(side, piece, square);
         self.value[square as usize] = Piece::Empty;
         self.bit_pieces[side as usize][piece as usize].clear_bit(square);
         self.bit_units[side as usize].clear_bit(square);
@@ -348,7 +343,6 @@ impl Board {
     }
 
     pub fn update_piece(&mut self, side: Side, piece: Piece, from: Square, to: Square) {
-        // Skip Empty pieces as they don't have bitboards
         if piece == Piece::Empty {
             return;
         }
@@ -359,34 +353,13 @@ impl Board {
         self.bit_all.clear_bit(from);
         self.bit_all.set_bit(to);
 
-        self.hash
-            .update_position_hash_key_and_lock(side, piece, from);
-        self.hash.update_position_hash_key_and_lock(side, piece, to);
+        self.hash.toggle_piece(side, piece, from);
+        self.hash.toggle_piece(side, piece, to);
 
         self.value[from as usize] = Piece::Empty;
         self.value[to as usize] = piece;
 
         self.bit_pieces[side as usize][piece as usize].clear_bit(from);
         self.bit_pieces[side as usize][piece as usize].set_bit(to);
-    }
-
-    /// Initializes the hashmap for a position
-    fn set_hash_key_and_lock_for_position(&mut self) {
-        self.hash.current_key = 0;
-        self.hash.current_lock = 0;
-
-        for square in Square::iter() {
-            let piece = self.value[square as usize];
-
-            if piece != Piece::Empty {
-                let side = self.bit_units[Side::White as usize]
-                    .is_bit_set(square)
-                    .then(|| Side::White)
-                    .unwrap_or(Side::Black);
-
-                self.hash
-                    .update_position_hash_key_and_lock(side, piece, square);
-            }
-        }
     }
 }
