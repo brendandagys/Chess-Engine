@@ -596,22 +596,28 @@ impl Position {
     }
 
     pub fn new_position(&mut self) {
+        // Note: Material scores are set by set_material() called after FEN loading
+        // The board pieces are already correctly set up from FEN loading or Position::new()
+        // so we don't need to re-add them here (doing so would corrupt the hash by double-toggling)
         self.piece_material_score = [0; NUM_SIDES];
         self.pawn_material_score = [0; NUM_SIDES];
 
+        // Recalculate material scores from current board state
         for square in Square::iter() {
             let piece = self.board.value[square as usize];
 
             if piece != Piece::Empty {
-                self.board.add_piece(
-                    if self.board.bit_units[Side::White as usize].is_bit_set(square) {
-                        Side::White
-                    } else {
-                        Side::Black
-                    },
-                    piece,
-                    square,
-                );
+                let side_idx = if self.board.bit_units[Side::White as usize].is_bit_set(square) {
+                    Side::White as usize
+                } else {
+                    Side::Black as usize
+                };
+
+                if piece == Piece::Pawn {
+                    self.pawn_material_score[side_idx] += piece.value() as usize;
+                } else {
+                    self.piece_material_score[side_idx] += piece.value() as usize;
+                }
             }
         }
     }
@@ -862,7 +868,7 @@ impl Position {
         );
 
         if b1.0 != 0 {
-            return Some(BitBoard(b1.next_bit().into()).into());
+            return Some(Square::try_from(b1.next_bit()).ok()?);
         }
 
         for (piece, bit_moves) in [
@@ -1654,14 +1660,17 @@ impl Position {
         if self.board.value[from as usize] == Piece::Pawn {
             self.fifty = 0;
 
-            // Handle en passant
+            // Handle en passant (diagonal pawn move to empty square, but NOT on promotion rank)
             if self.board.value[to as usize] == Piece::Empty
                 && COLUMN[from as usize] != COLUMN[to as usize]
+                && ![0, 7].contains(&ROW[to as usize])
+            // Not on promotion rank
             {
+                let en_passant_target = to as i32 + REVERSE_SQUARE[self.side as usize];
                 self.board.remove_piece(
                     self.side.opponent(),
                     Piece::Pawn,
-                    (to as i32 + REVERSE_SQUARE[self.side as usize])
+                    en_passant_target
                         .try_into()
                         .expect("Failed to convert square to Square"),
                 );
@@ -1811,7 +1820,6 @@ impl Position {
         game.to = to;
         game.capture = self.board.value[to as usize];
 
-        // Update the game list entry
         self.game_list[self.ply_from_start_of_game] = Some(game);
 
         self.ply += 1;
@@ -2047,7 +2055,11 @@ impl Position {
             print!(" ");
             Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
             // NOTE: Hash table doesn't currently store promotion piece, so we use None which defaults to Queen
-            self.make_move_with_promotion(self.hash_from.unwrap(), self.hash_to.unwrap(), None);
+            if !self.make_move_with_promotion(self.hash_from.unwrap(), self.hash_to.unwrap(), None)
+            {
+                // Move failed (shouldn't happen with hash moves, but be safe)
+                break;
+            }
         }
 
         while self.ply > 0 {
@@ -2120,21 +2132,20 @@ impl Position {
 
     fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
         self.nodes += 1;
-        let score = self.evaluate_position();
+        let stand_pat = self.evaluate_position();
 
-        if score > alpha {
-            if score >= beta {
+        if stand_pat > alpha {
+            if stand_pat >= beta {
                 return beta;
             }
 
-            alpha = score;
-        } else if score + Piece::Queen.value() < alpha {
+            alpha = stand_pat;
+        } else if stand_pat + Piece::Queen.value() < alpha {
             return alpha;
         }
 
-        let mut score = 0;
+        let mut best_capture_score = 0;
         let mut best_move_index = 0;
-        let mut best_score = 0;
 
         self.generate_captures(self.side);
 
@@ -2144,36 +2155,38 @@ impl Position {
             let from = self.move_list[move_index as usize].unwrap().from;
             let to = self.move_list[move_index as usize].unwrap().to;
 
-            if score + self.board.value[to as usize].value() < alpha {
+            if stand_pat + self.board.value[to as usize].value() < alpha {
                 continue;
             }
 
-            score = self.recapture_search(from, to);
+            let capture_score = self.recapture_search(from, to);
 
-            if score > best_score {
-                best_score = score;
+            if capture_score > best_capture_score {
+                best_capture_score = capture_score;
                 best_move_index = move_index;
             }
         }
 
-        if best_score > 0 {
-            score += best_score;
-        }
+        let total_score = if best_capture_score > 0 {
+            stand_pat + best_capture_score
+        } else {
+            stand_pat
+        };
 
-        if score > alpha {
-            if score >= beta {
-                if best_score > 0 {
+        if total_score > alpha {
+            if total_score >= beta {
+                if best_capture_score > 0 {
                     self.board.hash.store_move(
                         self.move_list[best_move_index as usize].unwrap(),
                         0, // quiescence doesn't have depth
-                        score,
+                        total_score,
                     );
                 }
 
                 return beta;
             }
 
-            return score;
+            return total_score;
         }
 
         alpha
@@ -2206,7 +2219,7 @@ impl Position {
     }
 
     /// Search backward for an identical position (repetition).
-    /// Positions are identical if the key and lock are the same.
+    /// Positions are identical if the key is the same.
     fn search_backward_for_identical_position(&self) -> bool {
         let mut cur = self.ply_from_start_of_game.saturating_sub(4);
         let end = self
@@ -2295,25 +2308,28 @@ impl Position {
 
             legal_moves_count += 1;
 
-            let next_depth = match self.is_square_attacked_by_side(
-                self.side.opponent(),
+            // Check if the move gives check to the opponent
+            let gives_check = self.is_square_attacked_by_side(
+                self.side.opponent(), // `self.side` has already been toggled in `make_move_with_promotion()`
                 self.board.bit_pieces[self.side as usize][Piece::King as usize]
                     .next_bit()
                     .try_into()
                     .expect("Failed to convert square to Square"),
-            ) {
-                true => depth,
-                false => {
-                    if self.move_list[move_index as usize].unwrap().score > CAPTURE_SCORE as isize
-                        || legal_moves_count == 1
-                        || in_check
-                    {
-                        if depth > 0 { depth - 1 } else { 0 }
-                    } else if self.move_list[move_index as usize].unwrap().score > 0 {
-                        if depth > 1 { depth - 2 } else { 0 }
-                    } else {
-                        if depth > 2 { depth - 3 } else { 0 }
-                    }
+            );
+
+            let next_depth = if gives_check {
+                // Check extension: search to same depth
+                depth
+            } else {
+                if self.move_list[move_index as usize].unwrap().score > CAPTURE_SCORE as isize
+                    || legal_moves_count == 1
+                    || in_check
+                {
+                    if depth > 0 { depth - 1 } else { 0 }
+                } else if self.move_list[move_index as usize].unwrap().score > 0 {
+                    if depth > 1 { depth - 2 } else { 0 }
+                } else {
+                    if depth > 2 { depth - 3 } else { 0 }
                 }
             };
 
@@ -2441,13 +2457,7 @@ impl Position {
                 }
             };
 
-            print!(
-                "{:>3} {:>8} {:>6} {}",
-                depth,
-                score,
-                (get_time() - self.start_time) / 10,
-                self.nodes,
-            );
+            print!("{:>3} {:>8} {:>6} ", depth, self.nodes, score,);
 
             if let Some(entry) = self.board.hash.probe() {
                 if let Some(hash_move) = entry.best_move {
@@ -2457,8 +2467,12 @@ impl Position {
                 }
             } else {
                 // If hash lookup fails, use the best move from search
-                self.hash_from = self.best_move_from;
-                self.hash_to = self.best_move_to;
+                if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
+                    self.hash_from = Some(from);
+                    self.hash_to = Some(to);
+                    print!(" ");
+                    Position::display_move(from, to);
+                }
 
                 self.best_move_from = None;
                 self.best_move_to = None;

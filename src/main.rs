@@ -430,8 +430,14 @@ impl ChessEngine {
             io::stdout().flush().unwrap();
 
             if Some(self.position.side) == self.computer_side {
-                self.position.think();
+                // Set search parameters
+                self.position.max_depth = self.max_depth;
+                self.position.max_time = self.max_time;
+                self.position.fixed_time = self.fixed_time;
+                self.position.fixed_depth = self.fixed_depth;
+
                 self.position.set_material();
+                self.position.think();
                 self.position.generate_moves(self.position.side);
 
                 let (hash_from, hash_to) = if let (Some(from), Some(to)) =
@@ -516,6 +522,7 @@ impl ChessEngine {
                         if let Ok(depth) = parts[1].parse::<u16>() {
                             self.max_depth = depth;
                             self.max_time = 1 << 25;
+                            self.fixed_depth = true;
                         }
                     }
                     continue;
@@ -602,9 +609,8 @@ impl ChessEngine {
 }
 
 fn main() {
-    println!("Bills Bitboard Chess Engine");
-    println!("Version 1.0, 15/1/20");
-    println!("Bill Jordan 2020");
+    println!("Brendan's Chess Engine");
+    println!("Version 1.0, 2025-10-07");
     println!();
     println!("\"help\" displays a list of commands.");
     println!();
