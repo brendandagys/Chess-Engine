@@ -14,7 +14,6 @@ struct ChessEngine {
     max_depth: u16,
     flip: bool,
     turn: u32,
-    player: [bool; 2],
 }
 
 impl ChessEngine {
@@ -29,10 +28,9 @@ impl ChessEngine {
             fixed_time: false,
             fixed_depth: false,
             max_time: 1 << 25,
-            max_depth: 4,
+            max_depth: 5,
             flip: false,
             turn: 0,
-            player: [false, false],
         }
     }
 
@@ -159,7 +157,7 @@ impl ChessEngine {
         if !has_legal_moves {
             self.position.generate_moves(self.position.side);
             self.display_board();
-            println!(" end of game ");
+            println!("GAME OVER ");
 
             let king_square = self.position.board.bit_pieces[self.position.side as usize]
                 [Piece::King as usize]
@@ -228,14 +226,14 @@ impl ChessEngine {
         loop {
             // Display current turn info
             println!(
-                "\n--- Ply: {} | Side to move: {:?} ---",
+                "--- Ply: {} | Side to move: {:?} ---",
                 self.position.ply_from_start_of_game + 1,
                 self.position.side
             );
 
             // Computer's turn
             if Some(self.position.side) == self.computer_side {
-                println!("Computer is thinking...");
+                println!("\nComputer is thinking...");
 
                 // Set search parameters
                 self.position.max_depth = self.max_depth;
@@ -286,14 +284,14 @@ impl ChessEngine {
             }
 
             // Human's turn
-            println!("\nYour turn!");
+            // println!("\nYour turn!");
 
             // Show available moves
             self.position.ply = 0;
             self.position.first_move[0] = 0;
             self.position.generate_moves(self.position.side);
 
-            print!("Enter from square (e.g., e2) or command> ");
+            print!("\nEnter from square (e.g., e2) or command> ");
             io::stdout().flush().unwrap();
 
             let mut input = String::new();
@@ -325,7 +323,7 @@ impl ChessEngine {
                     continue;
                 }
                 "moves" => {
-                    println!("Legal moves:");
+                    println!("\nLegal moves:");
                     let move_count = self.position.first_move[1];
                     for i in 0..move_count as usize {
                         if let Some(mv) = self.position.move_list[i] {
@@ -354,7 +352,7 @@ impl ChessEngine {
                     continue;
                 }
                 "quit" => {
-                    println!("Program exiting");
+                    println!("\nProgram exiting");
                     break;
                 }
                 "sw" => {
@@ -365,7 +363,7 @@ impl ChessEngine {
                 }
                 "undo" => {
                     if self.position.ply_from_start_of_game == 0 {
-                        println!("No moves to undo.");
+                        println!("\nNo moves to undo.");
                         continue;
                     }
                     self.computer_side = None;
@@ -378,10 +376,10 @@ impl ChessEngine {
                     self.display_board();
                     continue;
                 }
-                "xboard" => {
-                    self.xboard();
-                    break;
-                }
+                // "xboard" => {
+                //     self.xboard();
+                //     break;
+                // }
                 _ => {}
             }
 
@@ -457,7 +455,7 @@ impl ChessEngine {
                         .position
                         .make_move_with_promotion(mv.from, mv.to, mv.promote)
                     {
-                        println!("Illegal move.");
+                        println!("\nILLEGAL MOVE");
                         continue;
                     }
 
@@ -470,7 +468,7 @@ impl ChessEngine {
                     self.display_board();
                 }
             } else {
-                println!("Illegal move.");
+                println!("\nILLEGAL MOVE");
             }
         }
     }
@@ -539,192 +537,192 @@ impl ChessEngine {
         }
     }
 
-    fn xboard(&mut self) {
-        println!();
-        self.new_game();
-        self.fixed_time = false;
-        self.computer_side = None;
+    // fn xboard(&mut self) {
+    //     println!();
+    //     self.new_game();
+    //     self.fixed_time = false;
+    //     self.computer_side = None;
 
-        loop {
-            io::stdout().flush().unwrap();
+    //     loop {
+    //         io::stdout().flush().unwrap();
 
-            if Some(self.position.side) == self.computer_side {
-                // Set search parameters
-                self.position.max_depth = self.max_depth;
-                self.position.max_time = self.max_time;
-                self.position.fixed_time = self.fixed_time;
-                self.position.fixed_depth = self.fixed_depth;
+    //         if Some(self.position.side) == self.computer_side {
+    //             // Set search parameters
+    //             self.position.max_depth = self.max_depth;
+    //             self.position.max_time = self.max_time;
+    //             self.position.fixed_time = self.fixed_time;
+    //             self.position.fixed_depth = self.fixed_depth;
 
-                self.position.set_material();
-                self.position.think();
-                self.position.generate_moves(self.position.side);
+    //             self.position.set_material();
+    //             self.position.think();
+    //             self.position.generate_moves(self.position.side);
 
-                let (hash_from, hash_to) = if let (Some(from), Some(to)) =
-                    (self.position.hash_from, self.position.hash_to)
-                {
-                    (from, to)
-                } else {
-                    println!(" lookup=0 ");
-                    continue;
-                };
+    //             let (hash_from, hash_to) = if let (Some(from), Some(to)) =
+    //                 (self.position.hash_from, self.position.hash_to)
+    //             {
+    //                 (from, to)
+    //             } else {
+    //                 println!(" lookup=0 ");
+    //                 continue;
+    //             };
 
-                if let Some(ref mut mv) = self.position.move_list[0] {
-                    mv.from = hash_from;
-                    mv.to = hash_to;
-                }
+    //             if let Some(ref mut mv) = self.position.move_list[0] {
+    //                 mv.from = hash_from;
+    //                 mv.to = hash_to;
+    //             }
 
-                println!("move {}", Self::move_string(hash_from, hash_to, None));
-                self.position.make_move(hash_from, hash_to);
-                self.position.ply = 0;
-                self.position.generate_moves(self.position.side);
-                self.print_result();
-                continue;
-            }
+    //             println!("move {}", Self::move_string(hash_from, hash_to, None));
+    //             self.position.make_move(hash_from, hash_to);
+    //             self.position.ply = 0;
+    //             self.position.generate_moves(self.position.side);
+    //             self.print_result();
+    //             continue;
+    //         }
 
-            let mut input = String::new();
-            match io::stdin().read_line(&mut input) {
-                Ok(0) => return,
-                Ok(_) => {}
-                Err(_) => return,
-            }
+    //         let mut input = String::new();
+    //         match io::stdin().read_line(&mut input) {
+    //             Ok(0) => return,
+    //             Ok(_) => {}
+    //             Err(_) => return,
+    //         }
 
-            let line = input.trim();
-            if line.is_empty() {
-                continue;
-            }
+    //         let line = input.trim();
+    //         if line.is_empty() {
+    //             continue;
+    //         }
 
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.is_empty() {
-                continue;
-            }
+    //         let parts: Vec<&str> = line.split_whitespace().collect();
+    //         if parts.is_empty() {
+    //             continue;
+    //         }
 
-            let command = parts[0];
+    //         let command = parts[0];
 
-            match command {
-                "xboard" => continue,
-                "new" => {
-                    self.new_game();
-                    self.computer_side = Some(Side::Black);
-                    continue;
-                }
-                "quit" => return,
-                "force" => {
-                    self.computer_side = None;
-                    continue;
-                }
-                "white" => {
-                    self.position.side = Side::White;
-                    self.position.other_side = Side::Black;
-                    self.position.generate_moves(self.position.side);
-                    self.computer_side = Some(Side::Black);
-                    continue;
-                }
-                "black" => {
-                    self.position.side = Side::Black;
-                    self.position.other_side = Side::White;
-                    self.position.generate_moves(self.position.side);
-                    self.computer_side = Some(Side::White);
-                    continue;
-                }
-                "st" => {
-                    if parts.len() > 1 {
-                        if let Ok(time) = parts[1].parse::<u32>() {
-                            self.max_time = time * 1000;
-                            self.max_depth = 64;
-                            self.fixed_time = true;
-                        }
-                    }
-                    continue;
-                }
-                "sd" => {
-                    if parts.len() > 1 {
-                        if let Ok(depth) = parts[1].parse::<u16>() {
-                            self.max_depth = depth;
-                            self.max_time = 1 << 25;
-                            self.fixed_depth = true;
-                        }
-                    }
-                    continue;
-                }
-                "time" => {
-                    if parts.len() > 1 {
-                        if let Ok(time) = parts[1].parse::<u32>() {
-                            self.max_time = if time < 200 {
-                                self.max_depth = 1;
-                                time
-                            } else {
-                                self.max_depth = 64;
-                                time / 2
-                            };
-                        }
-                    }
-                    continue;
-                }
-                "otim" | "random" | "level" | "hard" | "easy" => continue,
-                "go" => {
-                    self.computer_side = Some(self.position.side);
-                    continue;
-                }
-                "hint" => {
-                    self.position.think();
-                    if let (Some(from), Some(to)) = (self.position.hash_from, self.position.hash_to)
-                    {
-                        println!("Hint: {}", Self::move_string(from, to, None));
-                    }
-                    continue;
-                }
-                "undo" => {
-                    if self.position.ply_from_start_of_game == 0 {
-                        continue;
-                    }
-                    self.position.take_back();
-                    self.position.ply = 0;
-                    self.position.generate_moves(self.position.side);
-                    continue;
-                }
-                "remove" => {
-                    if self.position.ply_from_start_of_game < 2 {
-                        continue;
-                    }
-                    self.position.take_back();
-                    self.position.take_back();
-                    self.position.ply = 0;
-                    self.position.generate_moves(self.position.side);
-                    continue;
-                }
-                "post" => {
-                    // Post mode on (not implemented)
-                    continue;
-                }
-                "nopost" => {
-                    // Post mode off (not implemented)
-                    continue;
-                }
-                _ => {
-                    // Try to parse as move
-                    self.position.first_move[0] = 0;
-                    self.position.generate_moves(self.position.side);
+    //         match command {
+    //             "xboard" => continue,
+    //             "new" => {
+    //                 self.new_game();
+    //                 self.computer_side = Some(Side::Black);
+    //                 continue;
+    //             }
+    //             "quit" => return,
+    //             "force" => {
+    //                 self.computer_side = None;
+    //                 continue;
+    //             }
+    //             "white" => {
+    //                 self.position.side = Side::White;
+    //                 self.position.other_side = Side::Black;
+    //                 self.position.generate_moves(self.position.side);
+    //                 self.computer_side = Some(Side::Black);
+    //                 continue;
+    //             }
+    //             "black" => {
+    //                 self.position.side = Side::Black;
+    //                 self.position.other_side = Side::White;
+    //                 self.position.generate_moves(self.position.side);
+    //                 self.computer_side = Some(Side::White);
+    //                 continue;
+    //             }
+    //             "st" => {
+    //                 if parts.len() > 1 {
+    //                     if let Ok(time) = parts[1].parse::<u32>() {
+    //                         self.max_time = time * 1000;
+    //                         self.max_depth = 64;
+    //                         self.fixed_time = true;
+    //                     }
+    //                 }
+    //                 continue;
+    //             }
+    //             "sd" => {
+    //                 if parts.len() > 1 {
+    //                     if let Ok(depth) = parts[1].parse::<u16>() {
+    //                         self.max_depth = depth;
+    //                         self.max_time = 1 << 25;
+    //                         self.fixed_depth = true;
+    //                     }
+    //                 }
+    //                 continue;
+    //             }
+    //             "time" => {
+    //                 if parts.len() > 1 {
+    //                     if let Ok(time) = parts[1].parse::<u32>() {
+    //                         self.max_time = if time < 200 {
+    //                             self.max_depth = 1;
+    //                             time
+    //                         } else {
+    //                             self.max_depth = 64;
+    //                             time / 2
+    //                         };
+    //                     }
+    //                 }
+    //                 continue;
+    //             }
+    //             "otim" | "random" | "level" | "hard" | "easy" => continue,
+    //             "go" => {
+    //                 self.computer_side = Some(self.position.side);
+    //                 continue;
+    //             }
+    //             "hint" => {
+    //                 self.position.think();
+    //                 if let (Some(from), Some(to)) = (self.position.hash_from, self.position.hash_to)
+    //                 {
+    //                     println!("Hint: {}", Self::move_string(from, to, None));
+    //                 }
+    //                 continue;
+    //             }
+    //             "undo" => {
+    //                 if self.position.ply_from_start_of_game == 0 {
+    //                     continue;
+    //                 }
+    //                 self.position.take_back();
+    //                 self.position.ply = 0;
+    //                 self.position.generate_moves(self.position.side);
+    //                 continue;
+    //             }
+    //             "remove" => {
+    //                 if self.position.ply_from_start_of_game < 2 {
+    //                     continue;
+    //                 }
+    //                 self.position.take_back();
+    //                 self.position.take_back();
+    //                 self.position.ply = 0;
+    //                 self.position.generate_moves(self.position.side);
+    //                 continue;
+    //             }
+    //             "post" => {
+    //                 // Post mode on (not implemented)
+    //                 continue;
+    //             }
+    //             "nopost" => {
+    //                 // Post mode off (not implemented)
+    //                 continue;
+    //             }
+    //             _ => {
+    //                 // Try to parse as move
+    //                 self.position.first_move[0] = 0;
+    //                 self.position.generate_moves(self.position.side);
 
-                    if let Some(move_idx) = self.parse_move(line) {
-                        if let Some(mv) = self.position.move_list[move_idx] {
-                            if !self
-                                .position
-                                .make_move_with_promotion(mv.from, mv.to, mv.promote)
-                            {
-                                println!("Error (unknown command): {}", command);
-                            } else {
-                                self.position.ply = 0;
-                                self.position.generate_moves(self.position.side);
-                                self.print_result();
-                            }
-                        }
-                    } else {
-                        println!("Error (unknown command): {}", command);
-                    }
-                }
-            }
-        }
-    }
+    //                 if let Some(move_idx) = self.parse_move(line) {
+    //                     if let Some(mv) = self.position.move_list[move_idx] {
+    //                         if !self
+    //                             .position
+    //                             .make_move_with_promotion(mv.from, mv.to, mv.promote)
+    //                         {
+    //                             println!("Error (unknown command): {}", command);
+    //                         } else {
+    //                             self.position.ply = 0;
+    //                             self.position.generate_moves(self.position.side);
+    //                             self.print_result();
+    //                         }
+    //                     }
+    //                 } else {
+    //                     println!("Error (unknown command): {}", command);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 fn main() {

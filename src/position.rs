@@ -623,7 +623,8 @@ impl Position {
         let reset = "\x1b[0m";
         let dark_square = "\x1b[48;5;94m"; // Dark brown background
         let light_square = "\x1b[48;5;223m"; // Light brown background
-        let text_color = "\x1b[97m"; // White text
+        let white_piece_color = "\x1b[97m"; // White text for white pieces
+        let black_piece_color = "\x1b[96m"; // Cyan text for black pieces
 
         println!();
 
@@ -646,6 +647,13 @@ impl Position {
                     dark_square
                 } else {
                     light_square
+                };
+
+                // Set text color based on piece color
+                let text_color = if is_white_piece {
+                    white_piece_color
+                } else {
+                    black_piece_color
                 };
 
                 print!("{}{}", bg_color, text_color);
@@ -2366,7 +2374,7 @@ impl Position {
         // Reset material scores
         self.new_position();
 
-        println!("PLY      NODES  SCORE  PV");
+        println!("\nPLY      NODES  SCORE  PV");
 
         // Iterative deepening: search depth 1, 2, 3, ... up to max_depth
         for depth in 1..=self.max_depth {
