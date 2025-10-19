@@ -223,10 +223,19 @@ impl ChessEngine {
     }
 
     fn run_main_loop(&mut self) {
+        self.display_board();
+
         loop {
+            // Display current turn info
+            println!(
+                "\n--- Ply: {} | Side to move: {:?} ---",
+                self.position.ply_from_start_of_game + 1,
+                self.position.side
+            );
+
             // Computer's turn
             if Some(self.position.side) == self.computer_side {
-                self.player[self.position.side as usize] = true;
+                println!("Computer is thinking...");
 
                 // Set search parameters
                 self.position.max_depth = self.max_depth;
@@ -235,7 +244,6 @@ impl ChessEngine {
                 self.position.fixed_depth = self.fixed_depth;
 
                 self.position.think();
-                self.turn += 1;
 
                 let (hash_from, hash_to) = if let (Some(from), Some(to)) =
                     (self.position.hash_from, self.position.hash_to)
@@ -251,35 +259,41 @@ impl ChessEngine {
                 };
 
                 println!(
-                    "Computer's move: {}",
+                    "\nComputer plays: {}",
                     Self::move_string(hash_from, hash_to, None)
                 );
-                println!();
 
                 self.position.make_move(hash_from, hash_to);
                 self.position.set_material();
 
                 let elapsed_time = get_time() - self.position.start_time;
-                println!("\nTime: {} ms", elapsed_time);
+                println!("Time: {} ms", elapsed_time);
 
                 let nps = if elapsed_time > 0 {
                     (self.position.nodes as f64 / elapsed_time as f64) * 1000.0
                 } else {
                     0.0
                 };
-                println!("\nNodes per second: {}", nps as u64);
+                println!("Nodes per second: {}", nps as u64);
 
                 self.position.ply = 0;
                 self.position.first_move[0] = 0;
                 self.position.generate_moves(self.position.side);
                 self.print_result();
-                print!(" turn {}", self.turn);
+                self.turn += 1;
                 self.display_board();
                 continue;
             }
 
             // Human's turn
-            print!("Enter move or command> ");
+            println!("\nYour turn!");
+
+            // Show available moves
+            self.position.ply = 0;
+            self.position.first_move[0] = 0;
+            self.position.generate_moves(self.position.side);
+
+            print!("Enter from square (e.g., e2) or command> ");
             io::stdout().flush().unwrap();
 
             let mut input = String::new();
@@ -291,6 +305,7 @@ impl ChessEngine {
 
             let command = input.trim();
 
+            // Check for commands first
             match command {
                 "d" => {
                     self.display_board();
@@ -302,7 +317,7 @@ impl ChessEngine {
                     continue;
                 }
                 "go" => {
-                    self.computer_side = Some(self.position.side);
+                    self.handle_go_command();
                     continue;
                 }
                 "help" => {
@@ -310,22 +325,24 @@ impl ChessEngine {
                     continue;
                 }
                 "moves" => {
-                    println!("Moves");
-                    self.position.ply = 0;
-                    self.position.first_move[0] = 0;
-                    self.position.generate_moves(self.position.side);
-
+                    println!("Legal moves:");
                     let move_count = self.position.first_move[1];
                     for i in 0..move_count as usize {
                         if let Some(mv) = self.position.move_list[i] {
-                            println!("{}", Self::move_string(mv.from, mv.to, mv.promote));
+                            print!("{} ", Self::move_string(mv.from, mv.to, mv.promote));
+                            if (i + 1) % 8 == 0 {
+                                println!();
+                            }
                         }
                     }
+                    println!();
                     continue;
                 }
                 "new" => {
                     self.new_game();
                     self.computer_side = None;
+                    self.turn = 1;
+                    self.display_board();
                     continue;
                 }
                 "on" | "p" => {
@@ -343,10 +360,12 @@ impl ChessEngine {
                 "sw" => {
                     self.position.side = self.position.side.opponent();
                     self.position.other_side = self.position.other_side.opponent();
+                    self.position.generate_moves(self.position.side);
                     continue;
                 }
                 "undo" => {
                     if self.position.ply_from_start_of_game == 0 {
+                        println!("No moves to undo.");
                         continue;
                     }
                     self.computer_side = None;
@@ -356,67 +375,167 @@ impl ChessEngine {
                         self.position.first_move[0] = 0;
                     }
                     self.position.generate_moves(self.position.side);
+                    self.display_board();
                     continue;
                 }
                 "xboard" => {
                     self.xboard();
                     break;
                 }
-                _ => {
-                    // Handle move input or commands with parameters
-                    if command.starts_with("sb ") {
-                        let filename = &command[3..];
-                        let full_path = format!("c:\\bscp\\{}.fen", filename);
-                        match self.load_diagram(&full_path, 1) {
-                            Ok(_) => {}
-                            Err(e) => println!("Error loading diagram: {}", e),
-                        }
+                _ => {}
+            }
+
+            // Handle commands with parameters
+            if command.starts_with("sb ") {
+                let filename = &command[3..];
+                let full_path = format!("c:\\bscp\\{}.fen", filename);
+                match self.load_diagram(&full_path, 1) {
+                    Ok(_) => {}
+                    Err(e) => println!("Error loading diagram: {}", e),
+                }
+                continue;
+            }
+
+            if command.starts_with("sd ") {
+                if let Ok(depth) = command[3..].parse::<u16>() {
+                    self.max_depth = depth;
+                    self.max_time = 1 << 25;
+                    self.fixed_depth = true;
+                    println!("Search depth set to {}", depth);
+                }
+                continue;
+            }
+
+            if command.starts_with("st ") {
+                if let Ok(time) = command[3..].parse::<u32>() {
+                    self.max_time = time * 1000;
+                    self.max_depth = 64;
+                    self.fixed_time = true;
+                    println!("Search time set to {} seconds", time);
+                }
+                continue;
+            }
+
+            // Try to parse as from square for a move
+            let from_square = self.parse_square(command);
+            if from_square.is_none() {
+                println!("Invalid square. Please enter a valid square (e.g., e2) or command.");
+                continue;
+            }
+            let from_square = from_square.unwrap();
+
+            // Get to square
+            print!("Enter to square (e.g., e4)> ");
+            io::stdout().flush().unwrap();
+
+            let mut to_input = String::new();
+            match io::stdin().read_line(&mut to_input) {
+                Ok(0) => return,
+                Ok(_) => {}
+                Err(_) => return,
+            }
+
+            let to_square = self.parse_square(to_input.trim());
+            if to_square.is_none() {
+                println!("Invalid square.");
+                continue;
+            }
+            let to_square = to_square.unwrap();
+
+            // Construct move string and try to make the move
+            let move_str = format!(
+                "{}{}{}{}",
+                ((from_square % 8) as u8 + b'a') as char,
+                ((from_square / 8) as u8 + b'1') as char,
+                ((to_square % 8) as u8 + b'a') as char,
+                ((to_square / 8) as u8 + b'1') as char
+            );
+
+            if let Some(move_idx) = self.parse_move(&move_str) {
+                if let Some(mv) = self.position.move_list[move_idx] {
+                    if !self
+                        .position
+                        .make_move_with_promotion(mv.from, mv.to, mv.promote)
+                    {
+                        println!("Illegal move.");
                         continue;
                     }
 
-                    if command.starts_with("sd ") {
-                        if let Ok(depth) = command[3..].parse::<u16>() {
-                            self.max_depth = depth;
-                            self.max_time = 1 << 25;
-                            self.fixed_depth = true;
-                        }
-                        continue;
-                    }
-
-                    if command.starts_with("st ") {
-                        if let Ok(time) = command[3..].parse::<u32>() {
-                            self.max_time = time * 1000;
-                            self.max_depth = 64;
-                            self.fixed_time = true;
-                        }
-                        continue;
-                    }
-
-                    // Try to parse as a move
+                    self.position.set_material();
                     self.position.ply = 0;
                     self.position.first_move[0] = 0;
                     self.position.generate_moves(self.position.side);
+                    self.print_result();
+                    self.turn += 1;
+                    self.display_board();
+                }
+            } else {
+                println!("Illegal move.");
+            }
+        }
+    }
 
-                    if let Some(move_idx) = self.parse_move(command) {
-                        if let Some(mv) = self.position.move_list[move_idx] {
-                            if !self
-                                .position
-                                .make_move_with_promotion(mv.from, mv.to, mv.promote)
-                            {
-                                println!("Illegal move.");
-                                println!("{}", command);
-                                continue;
-                            }
+    fn parse_square(&self, input: &str) -> Option<usize> {
+        if input.len() != 2 {
+            return None;
+        }
 
-                            // Note: Promotion is now handled in make_move_with_promotion
-                            // The old manual promotion code has been removed
-                        }
-                    } else {
-                        println!("Illegal move.");
-                        println!("{}", command);
-                    }
+        let chars: Vec<char> = input.chars().collect();
+
+        if chars[0] < 'a' || chars[0] > 'h' || chars[1] < '1' || chars[1] > '8' {
+            return None;
+        }
+
+        let file = (chars[0] as u8 - b'a') as usize;
+        let rank = (chars[1] as u8 - b'1') as usize;
+
+        Some(rank * 8 + file)
+    }
+
+    fn handle_go_command(&mut self) {
+        println!("\nChoose your side:");
+        println!("1. White");
+        println!("2. Black");
+        println!("3. Random");
+        print!("Enter choice (1-3)> ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {}
+            Err(_) => return,
+        }
+
+        let choice = input.trim();
+
+        let player_side = match choice {
+            "1" => Side::White,
+            "2" => Side::Black,
+            "3" => {
+                // Random choice
+                use std::time::SystemTime;
+                let now = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                if now % 2 == 0 {
+                    Side::White
+                } else {
+                    Side::Black
                 }
             }
+            _ => {
+                println!("Invalid choice. Defaulting to White.");
+                Side::White
+            }
+        };
+
+        println!("You are playing as {:?}", player_side);
+        self.computer_side = Some(player_side.opponent());
+
+        // If computer is white, let it move first
+        if self.computer_side == Some(Side::White) {
+            println!("Computer plays first.");
         }
     }
 

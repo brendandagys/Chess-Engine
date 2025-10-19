@@ -300,12 +300,13 @@ pub const KINGSIDE_DEFENSE: [[i32; NUM_SQUARES]; NUM_SIDES] = [
   ]
 ];
 
-pub const PAWN_CAPTURE_SCORE: [i32; 6] = [0, 10, 20, 30, 40, 0];
-pub const KNIGHT_CAPTURE_SCORE: [i32; 6] = [-3, 7, 17, 27, 37, 0];
-pub const BISHOP_CAPTURE_SCORE: [i32; 6] = [-3, 7, 17, 27, 37, 0];
-pub const ROOK_CAPTURE_SCORE: [i32; 6] = [-5, 5, 15, 25, 35, 0];
-pub const QUEEN_CAPTURE_SCORE: [i32; 6] = [-9, 1, 11, 21, 31, 0];
-pub const KING_CAPTURE_SCORE: [i32; 6] = [0, 10, 20, 30, 40, 0];
+// TODO: remove last element (for Empty piece)
+pub const PAWN_CAPTURE_SCORE: [i32; 7] = [0, 10, 20, 30, 40, 0, 0]; // Last element is for Empty piece
+pub const KNIGHT_CAPTURE_SCORE: [i32; 7] = [-3, 7, 17, 27, 37, 0, 0]; // Last element is for Empty piece
+pub const BISHOP_CAPTURE_SCORE: [i32; 7] = [-3, 7, 17, 27, 37, 0, 0]; // Last element is for Empty piece
+pub const ROOK_CAPTURE_SCORE: [i32; 7] = [-5, 5, 15, 25, 35, 0, 0]; // Last element is for Empty piece
+pub const QUEEN_CAPTURE_SCORE: [i32; 7] = [-9, 1, 11, 21, 31, 0, 0]; // Last element is for Empty piece
+pub const KING_CAPTURE_SCORE: [i32; 7] = [0, 10, 20, 30, 40, 0, 0]; // Last element is for Empty piece
 
 pub const REVERSE_SQUARE: [i32; NUM_SIDES] = [-8, 8];
 

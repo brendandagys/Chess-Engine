@@ -994,9 +994,6 @@ impl Position {
                 & self.board.bit_units[side.opponent() as usize].0,
         );
 
-        self.display_board(false);
-        king_captures.print();
-
         while king_captures.0 != 0 {
             let square_to = king_captures.next_bit_mut();
 
@@ -1024,12 +1021,6 @@ impl Position {
         self.generate_castle_moves(side, &mut move_count);
 
         // Pawns
-        self.display_board(false);
-        println!("SIDE: {:?}", side);
-        println!("PLY: {}", self.ply);
-        println!("Pawn bitboard:");
-        self.board.bit_pieces[side as usize][Piece::Pawn as usize].print();
-
         match side {
             Side::White => {
                 left_pawn_captures = BitBoard(
@@ -1064,11 +1055,6 @@ impl Position {
                 );
             }
         }
-
-        println!("Left pawn captures bitboard:");
-        left_pawn_captures.print();
-        println!("Right pawn captures bitboard:");
-        right_pawn_captures.print();
 
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
@@ -1195,16 +1181,23 @@ impl Position {
             while knight_captures.0 != 0 {
                 let square_to = knight_captures.next_bit_mut();
 
-                self.add_capture(
-                    square_from
-                        .try_into()
-                        .expect("Failed to convert square_from to Square"),
-                    square_to
-                        .try_into()
-                        .expect("Failed to convert square_to to Square"),
-                    KNIGHT_CAPTURE_SCORE[self.board.value[square_to as usize] as usize] as isize,
-                    &mut move_count,
-                );
+                // TODO: remove
+                let captured_piece = self.board.value[square_to as usize];
+                if captured_piece != Piece::Empty
+                    && (captured_piece as usize) < KNIGHT_CAPTURE_SCORE.len()
+                {
+                    self.add_capture(
+                        square_from
+                            .try_into()
+                            .expect("Failed to convert square_from to Square"),
+                        square_to
+                            .try_into()
+                            .expect("Failed to convert square_to to Square"),
+                        KNIGHT_CAPTURE_SCORE[self.board.value[square_to as usize] as usize]
+                            as isize,
+                        &mut move_count,
+                    );
+                }
             }
 
             let mut knight_moves =
@@ -1260,16 +1253,23 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                     {
-                        self.add_capture(
-                            square_from
-                                .try_into()
-                                .expect("Failed to convert square_from to Square"),
-                            square_to
-                                .try_into()
-                                .expect("Failed to convert square_to to Square"),
-                            capture_score[self.board.value[square_to as usize] as usize] as isize,
-                            &mut move_count,
-                        );
+                        // TODO: remove
+                        let captured_piece = self.board.value[square_to as usize];
+                        // Skip if empty (shouldn't happen, but safeguard against board corruption)
+                        if captured_piece != Piece::Empty
+                            && (captured_piece as usize) < capture_score.len()
+                        {
+                            self.add_capture(
+                                square_from
+                                    .try_into()
+                                    .expect("Failed to convert square_from to Square"),
+                                square_to
+                                    .try_into()
+                                    .expect("Failed to convert square_to to Square"),
+                                capture_score[captured_piece as usize] as isize,
+                                &mut move_count,
+                            );
+                        }
                     }
 
                     possible_captures.0 &=
@@ -1469,16 +1469,23 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                     {
-                        self.add_capture(
-                            attacking_square
-                                .try_into()
-                                .expect("Failed to convert square_from to Square"),
-                            square_to
-                                .try_into()
-                                .expect("Failed to convert square_to to Square"),
-                            capture_score[self.board.value[square_to as usize] as usize] as isize,
-                            &mut move_count,
-                        );
+                        // TODO: remove
+                        let captured_piece = self.board.value[square_to as usize];
+                        // Skip if empty (shouldn't happen, but safeguard against board corruption)
+                        if captured_piece != Piece::Empty
+                            && (captured_piece as usize) < capture_score.len()
+                        {
+                            self.add_capture(
+                                attacking_square
+                                    .try_into()
+                                    .expect("Failed to convert square_from to Square"),
+                                square_to
+                                    .try_into()
+                                    .expect("Failed to convert square_to to Square"),
+                                capture_score[captured_piece as usize] as isize,
+                                &mut move_count,
+                            );
+                        }
                     }
 
                     possible_captures.0 &=
@@ -1766,13 +1773,15 @@ impl Position {
             && game.capture == Piece::Empty
             && COLUMN[from as usize] != COLUMN[to as usize]
         {
-            self.board.add_piece(
-                self.side.opponent(),
-                Piece::Pawn,
-                (to as i32 + REVERSE_SQUARE[self.side as usize])
-                    .try_into()
-                    .expect("Failed to convert square to Square"),
-            );
+            let en_passant_target = to as i32 + REVERSE_SQUARE[self.side as usize];
+            // Validate the target square is in range
+            if en_passant_target >= 0 && en_passant_target < 64 {
+                self.board.add_piece(
+                    self.side.opponent(),
+                    Piece::Pawn,
+                    Square::try_from(en_passant_target as u8).unwrap(),
+                );
+            }
         }
 
         // Promotion
@@ -2126,62 +2135,57 @@ impl Position {
     }
 
     fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
+        // Increment node count
         self.nodes += 1;
+
+        // Get static evaluation (stand pat score)
         let stand_pat = self.evaluate_position();
 
-        if stand_pat > alpha {
-            if stand_pat >= beta {
-                return beta;
-            }
-
-            alpha = stand_pat;
-        } else if stand_pat + Piece::Queen.value() < alpha {
-            return alpha;
+        // Stand pat cutoff
+        if stand_pat >= beta {
+            return stand_pat;
         }
 
-        let mut best_capture_score = 0;
-        let mut best_move_index = 0;
+        // Update alpha if stand pat is better
+        if stand_pat > alpha {
+            alpha = stand_pat;
+        }
 
+        // Generate only capture moves
         self.generate_captures(self.side);
+        let move_list_start = self.first_move[self.ply] as usize;
+        let move_list_end = self.first_move[self.ply + 1] as usize;
 
-        for move_index in self.first_move[self.ply]..self.first_move[self.ply + 1] {
-            self.sort(move_index);
+        // Search all captures
+        for move_index in move_list_start..move_list_end {
+            self.sort(move_index as isize);
 
-            let from = self.move_list[move_index as usize].unwrap().from;
-            let to = self.move_list[move_index as usize].unwrap().to;
+            let current_move = self.move_list[move_index].unwrap();
 
-            if stand_pat + self.board.value[to as usize].value() < alpha {
+            // Try to make the move
+            if !self.make_move_with_promotion(
+                current_move.from,
+                current_move.to,
+                current_move.promote,
+            ) {
+                // Move is illegal (leaves king in check)
                 continue;
             }
 
-            let capture_score = self.recapture_search(from, to);
+            // Recursively search
+            let score = -self.quiescent_search(-beta, -alpha);
 
-            if capture_score > best_capture_score {
-                best_capture_score = capture_score;
-                best_move_index = move_index;
-            }
-        }
+            // Take back the move
+            self.take_back_move();
 
-        let total_score = if best_capture_score > 0 {
-            stand_pat + best_capture_score
-        } else {
-            stand_pat
-        };
-
-        if total_score > alpha {
-            if total_score >= beta {
-                if best_capture_score > 0 {
-                    self.board.hash.store_move(
-                        self.move_list[best_move_index as usize].unwrap(),
-                        0, // quiescence doesn't have depth
-                        total_score,
-                    );
-                }
-
-                return beta;
+            // Update best score
+            if score >= beta {
+                return score; // Beta cutoff
             }
 
-            return total_score;
+            if score > alpha {
+                alpha = score;
+            }
         }
 
         alpha
@@ -2237,249 +2241,205 @@ impl Position {
         false
     }
 
-    /// Main part of the search.
-    /// Alpha is the player's best score found so far.
-    /// Beta is the opponent's best score found so far.
+    /// Negamax search with alpha-beta pruning.
+    /// Alpha is the lower bound (player's best guaranteed score).
+    /// Beta is the upper bound (opponent's best guaranteed score).
     fn search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
-        // Stop if the position is a repeat
+        // Check for draw by repetition
         if self.ply > 0 && self.search_backward_for_identical_position() {
             return 0;
         }
 
-        // If depth has run out, the capture search is performed
+        // If depth has run out, switch to quiescence search
         if depth == 0 {
             return self.quiescent_search(alpha, beta);
         }
 
+        // Increment node count
         self.nodes += 1;
 
-        // Check the time every 4,096 positions (efficient bitwise AND operation)
-        if self.nodes & 4096 == 0 {
+        // Periodically check if time has expired
+        if self.nodes & 4095 == 0 {
             self.check_if_time_is_exhausted();
         }
 
-        if self.ply > MAX_PLY - 2 {
+        // Safety check: don't search too deep
+        if self.ply >= MAX_PLY - 1 {
             return self.evaluate_position();
         }
 
-        let mut best_move: Option<Move> = None;
-        let mut best_score = -10001;
+        // Check if we're currently in check
+        let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
+            .next_bit()
+            .try_into()
+            .expect("Failed to convert square to Square");
+        let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
 
-        let in_check = self.is_square_attacked_by_side(
-            self.side.opponent(),
-            self.board.bit_pieces[self.side as usize][Piece::King as usize]
-                .next_bit()
-                .try_into()
-                .expect("Failed to convert square to Square"),
-        );
-
+        // Generate all legal moves
         self.generate_moves_and_captures(self.side);
+        let move_list_start = self.first_move[self.ply] as usize;
+        let move_list_end = self.first_move[self.ply + 1] as usize;
 
-        // If the position is in the hash table, look up its best move
-        if let Some(entry) = self.board.hash.probe() {
-            if let Some(hash_move) = entry.best_move {
-                self.hash_from = Some(hash_move.from);
-                self.hash_to = Some(hash_move.to);
-                self.set_hash_move();
-            }
-        }
-
+        let mut best_value = -100000; // -infinity
+        let mut best_move: Option<Move> = None;
         let mut legal_moves_count = 0;
 
-        // Loop through the moves in order of their score
-        for move_index in self.first_move[self.ply]..self.first_move[self.ply + 1] {
-            self.sort(move_index);
+        // Search all moves
+        for move_index in move_list_start..move_list_end {
+            // Pick the best remaining move (incremental sort)
+            self.sort(move_index as isize);
 
-            let current_move = self.move_list[move_index as usize].unwrap();
+            let current_move = self.move_list[move_index].unwrap();
 
-            // Skip invalid moves (i.e. pinned pieces)
+            // Try to make the move
             if !self.make_move_with_promotion(
                 current_move.from,
                 current_move.to,
                 current_move.promote,
             ) {
+                // Move is illegal (leaves king in check)
                 continue;
             }
 
             legal_moves_count += 1;
 
-            // Check if the move gives check to the opponent
-            let gives_check = self.is_square_attacked_by_side(
-                self.side.opponent(), // `self.side` has already been toggled in `make_move_with_promotion()`
-                self.board.bit_pieces[self.side as usize][Piece::King as usize]
-                    .next_bit()
-                    .try_into()
-                    .expect("Failed to convert square to Square"),
-            );
+            // Recursively search with negated window
+            let score = -self.search(-beta, -alpha, depth - 1);
 
-            let next_depth = if gives_check {
-                // Check extension: search to same depth
-                depth
-            } else {
-                if self.move_list[move_index as usize].unwrap().score > CAPTURE_SCORE as isize
-                    || legal_moves_count == 1
-                    || in_check
-                {
-                    if depth > 0 { depth - 1 } else { 0 }
-                } else if self.move_list[move_index as usize].unwrap().score > 0 {
-                    if depth > 1 { depth - 2 } else { 0 }
-                } else {
-                    if depth > 2 { depth - 3 } else { 0 }
-                }
-            };
-
-            // Get score for opponent's next move
-            let score = -self.search(-beta, -alpha, next_depth);
-
+            // Take back the move
             self.take_back_move();
 
-            if score > best_score {
-                best_score = score;
-                best_move = self.move_list[move_index as usize];
-            }
+            // Update best value
+            if score > best_value {
+                best_value = score;
+                best_move = Some(current_move);
 
-            if score > alpha {
-                // Beta cutoff - score is too good; opponent won't allow this position
-                if score >= beta {
-                    let move_ = self.move_list[move_index as usize].unwrap();
-
-                    // Check if it's a "quiet" move
-                    // These moves need a history to distinguish between seemingly similar moves
-                    if move_.to.as_bit() & self.board.bit_all.0 == 0 {
-                        // Add to history table
-                        self.history_table[move_.from as usize][move_.to as usize] +=
-                            depth as isize;
-                    }
-
-                    self.board.hash.store_move(move_, depth as u8, score);
-                    return beta;
+                // Update alpha (acts like max in minimax)
+                if score > alpha {
+                    alpha = score;
                 }
+            }
 
-                alpha = score;
+            // Beta cutoff
+            if score >= beta {
+                return best_value; // Fail-soft beta-cutoff
             }
         }
 
-        // Either checkmate or stalemate
+        // Check for checkmate or stalemate
         if legal_moves_count == 0 {
-            match self.is_square_attacked_by_side(
-                self.side.opponent(),
-                self.board.bit_pieces[self.side as usize][Piece::King as usize]
-                    .next_bit()
-                    .try_into()
-                    .expect("Failed to convert square to Square"),
-            ) {
-                true => return -10000 + self.ply as i32, // TODO: Improve safety, though likely irrelevant
-                false => return 0,
+            if in_check {
+                // Checkmate - return negative score, prefer shorter mates
+                return -10000 + self.ply as i32;
+            } else {
+                // Stalemate
+                return 0;
             }
         }
 
-        // Draw by 50-move rule
+        // Check for draw by 50-move rule
         if self.fifty >= 100 {
             return 0;
         }
 
-        self.board
-            .hash
-            .store_move(best_move.unwrap(), depth as u8, alpha);
-
-        // Store the best move found at root level (ply 0)
+        // Store best move at root for retrieval later
         if self.ply == 0 {
-            self.best_move_from = Some(best_move.unwrap().from);
-            self.best_move_to = Some(best_move.unwrap().to);
-        }
-
-        alpha
-    }
-
-    /// Launch the search.
-    /// Iterates until maximum depth is reached or the allotted time runs out.
-    pub fn think(&mut self) {
-        self.stop_search = false;
-
-        if !self.fixed_time {
-            // Halve allotted time for check-evasion or recapture moves
-            if self.is_square_attacked_by_side(
-                self.side.opponent(),
-                self.board.bit_pieces[self.side as usize][Piece::King as usize]
-                    .next_bit()
-                    .try_into()
-                    .expect("Failed to convert square to Square"),
-            ) {
-                self.max_time /= 2;
+            if let Some(mv) = best_move {
+                self.best_move_from = Some(mv.from);
+                self.best_move_to = Some(mv.to);
             }
         }
 
+        best_value
+    }
+
+    /// Launch the search using iterative deepening.
+    /// Searches progressively deeper until maximum depth is reached or time runs out.
+    pub fn think(&mut self) {
+        // Initialize search state
+        self.stop_search = false;
         self.start_time = get_time();
         self.stop_time = self.start_time + self.max_time as u64;
-
         self.ply = 0;
         self.nodes = 0;
 
+        // Reset material scores
         self.new_position();
-
-        self.history_table = [[0; NUM_SQUARES]; NUM_SQUARES];
 
         println!("PLY      NODES  SCORE  PV");
 
+        // Iterative deepening: search depth 1, 2, 3, ... up to max_depth
         for depth in 1..=self.max_depth {
+            // Check if we should stop before starting next depth
             if !self.fixed_depth && self.max_depth > 1 {
-                if self.fixed_time {
-                    if get_time() >= self.start_time + self.max_time as u64 {
-                        self.stop_search = true;
-                        return;
-                    }
-                } else if get_time() >= self.start_time + self.max_time as u64 / 4 {
-                    self.stop_search = true;
-                    return;
+                let elapsed = get_time() - self.start_time;
+                let time_limit = if self.fixed_time {
+                    self.max_time as u64
+                } else {
+                    self.max_time as u64 / 4
+                };
+
+                if elapsed >= time_limit {
+                    break;
                 }
             }
 
+            // Ensure ply is reset before starting search
+            self.ply = 0;
+            self.first_move[0] = 0;
+
+            // Perform the search at this depth
             let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
                 self.search(-10000, 10000, depth)
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
+                    // Handle time exhaustion panic
                     if let Some(msg) = panic_payload.downcast_ref::<&str>() {
                         if *msg == "TimeExhausted" {
+                            // Ensure we've unwound all moves
                             while self.ply > 0 {
                                 self.take_back_move();
                             }
-                            return;
+                            break;
                         }
                     }
-
+                    // Re-throw any other panics
                     panic::resume_unwind(panic_payload);
                 }
             };
 
-            println!("PLY      NODES  SCORE  PV");
-            print!("{:>3} {:>8} {:>6} ", depth, self.nodes, score,);
+            // Ensure ply is back to 0 after search
+            while self.ply > 0 {
+                self.take_back_move();
+            }
 
-            if let Some(entry) = self.board.hash.probe() {
-                if let Some(hash_move) = entry.best_move {
-                    self.hash_from = Some(hash_move.from);
-                    self.hash_to = Some(hash_move.to);
-                    self.display_principal_variation(depth);
-                }
-            } else {
-                // If hash lookup fails, use the best move from search
-                if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
-                    self.hash_from = Some(from);
-                    self.hash_to = Some(to);
-                    print!(" ");
-                    Position::display_move(from, to);
-                }
+            // Display search results
+            print!("{:>3} {:>8} {:>6} ", depth, self.nodes, score);
 
-                self.best_move_from = None;
-                self.best_move_to = None;
+            // Display best move
+            if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
+                print!(" ");
+                Position::display_move(from, to);
             }
 
             println!();
             std::io::Write::flush(&mut std::io::stdout()).unwrap();
 
+            // Stop if we found a mate
             if score > 9000 || score < -9000 {
                 break;
             }
+        }
+
+        // Ensure position is clean after search
+        self.ply = 0;
+        self.first_move[0] = 0;
+
+        // Set hash_from and hash_to for retrieval by caller from best move
+        if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
+            self.hash_from = Some(from);
+            self.hash_to = Some(to);
         }
     }
 
