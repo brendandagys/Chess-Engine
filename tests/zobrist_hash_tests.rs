@@ -1,5 +1,5 @@
 /// Unit tests for zobrist_hash module
-mod hash_test_utils;
+mod test_utils;
 
 use chess_engine::{
     types::{Piece, Side, Square},
@@ -8,9 +8,9 @@ use chess_engine::{
         ZOBRIST_SIDE_TO_MOVE_HASH, initialize_zobrist_hash_tables,
     },
 };
-use hash_test_utils::*;
 use std::collections::HashSet;
 use std::sync::Once;
+use test_utils::*;
 
 static INIT: Once = Once::new();
 

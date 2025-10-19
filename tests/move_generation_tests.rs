@@ -1,23 +1,11 @@
+/// Unit tests for move generation module
+mod test_utils;
+
 use chess_engine::{
     position::Position,
     types::{Board, Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
-use std::sync::Once;
-
-fn reset_move_state(position: &mut Position) {
-    position.ply = 0;
-    position.first_move.iter_mut().for_each(|entry| *entry = -1);
-    position.first_move[0] = 0;
-    position.move_list.iter_mut().for_each(|slot| *slot = None);
-}
-
-fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
+use test_utils::*;
 
 fn empty_position_with_kings(side_to_move: Side) -> Position {
     ensure_zobrist_initialized();
@@ -39,35 +27,6 @@ fn empty_position_with_kings(side_to_move: Side) -> Position {
 
     reset_move_state(&mut position);
     position
-}
-
-fn move_pairs(position: &Position) -> Vec<(Square, Square)> {
-    let start = position
-        .first_move
-        .get(position.ply)
-        .copied()
-        .unwrap_or(0)
-        .max(0) as usize;
-
-    if let Some(&end_value) = position.first_move.get(position.ply + 1) {
-        if end_value >= 0 {
-            let end = end_value as usize;
-            if end >= start {
-                return position.move_list[start..end]
-                    .iter()
-                    .filter_map(|entry| entry.as_ref().map(|mv| (mv.from, mv.to)))
-                    .collect();
-            }
-        }
-    }
-
-    position
-        .move_list
-        .iter()
-        .skip(start)
-        .take_while(|entry| entry.is_some())
-        .filter_map(|entry| entry.as_ref().map(|mv| (mv.from, mv.to)))
-        .collect()
 }
 
 #[test]
@@ -139,6 +98,111 @@ fn capture_generation_only_returns_enemy_targets() {
     for &(_, to) in &moves {
         assert_ne!(position.board.value[to as usize], Piece::Empty);
     }
+}
+
+#[test]
+fn fen_arbitrary_bishop_captures_1() {
+    test_fen_captures(
+        "k7/8/4n3/1p6/2B5/8/8/6K1 w - - 0 1",
+        Side::White,
+        vec![(Square::C4, Square::B5), (Square::C4, Square::E6)],
+    );
+}
+
+#[test]
+fn fen_arbitrary_captures_1() {
+    test_fen_captures(
+        "r1b2r1k/4qp1p/p2ppb1Q/4nP2/1p1NP3/2N5/PPP4P/2KR1BR1 w - - 0 1",
+        Side::White,
+        vec![
+            (Square::D4, Square::E6),
+            (Square::F1, Square::A6),
+            (Square::F5, Square::E6),
+            (Square::H6, Square::F8),
+            (Square::H6, Square::F6),
+            (Square::H6, Square::H7),
+        ],
+    );
+
+    test_fen_captures(
+        "r1b2r1k/4qp1p/p2ppb1Q/4nP2/1p1NP3/2N5/PPP4P/2KR1BR1 w - - 0 1",
+        Side::Black,
+        vec![(Square::E6, Square::F5), (Square::B4, Square::C3)],
+    );
+}
+
+#[test]
+fn fen_arbitrary_captures_2() {
+    test_fen_captures(
+        "r4k1r/1b2bPR1/p4n2/3p4/4P2P/1q2B2B/PpP5/1K4R1 w - - 0 1",
+        Side::White,
+        vec![
+            (Square::C2, Square::B3),
+            (Square::E4, Square::D5),
+            (Square::A2, Square::B3),
+            (Square::B1, Square::B2),
+        ],
+    );
+
+    test_fen_captures(
+        "r4k1r/1b2bPR1/p4n2/3p4/4P2P/1q2B2B/PpP5/1K4R1 w - - 0 1",
+        Side::Black,
+        vec![
+            (Square::D5, Square::E4),
+            (Square::F6, Square::E4),
+            (Square::H8, Square::H4),
+            (Square::B3, Square::A2),
+            (Square::B3, Square::C2),
+            (Square::B3, Square::E3),
+            (Square::F8, Square::F7),
+            (Square::F8, Square::G7),
+        ],
+    );
+}
+
+#[test]
+fn fen_pawn_captures_1() {
+    test_fen_captures(
+        "3k4/8/8/pppppppp/PPPPPPPP/8/8/3K4 w - - 0 1",
+        Side::White,
+        vec![
+            (Square::A4, Square::B5),
+            (Square::B4, Square::A5),
+            (Square::B4, Square::C5),
+            (Square::C4, Square::B5),
+            (Square::C4, Square::D5),
+            (Square::D4, Square::C5),
+            (Square::D4, Square::E5),
+            (Square::E4, Square::D5),
+            (Square::E4, Square::F5),
+            (Square::F4, Square::E5),
+            (Square::F4, Square::G5),
+            (Square::G4, Square::F5),
+            (Square::G4, Square::H5),
+            (Square::H4, Square::G5),
+        ],
+    );
+
+    test_fen_captures(
+        "3k4/8/8/pppppppp/PPPPPPPP/8/8/3K4 w - - 0 1",
+        Side::Black,
+        vec![
+            (Square::A5, Square::B4),
+            (Square::B5, Square::A4),
+            (Square::B5, Square::C4),
+            (Square::C5, Square::B4),
+            (Square::C5, Square::D4),
+            (Square::D5, Square::C4),
+            (Square::D5, Square::E4),
+            (Square::E5, Square::D4),
+            (Square::E5, Square::F4),
+            (Square::F5, Square::E4),
+            (Square::F5, Square::G4),
+            (Square::G5, Square::F4),
+            (Square::G5, Square::H4),
+            (Square::H5, Square::G4),
+        ],
+    );
 }
 
 #[test]

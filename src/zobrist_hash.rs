@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use crate::{
     constants::{NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES},
-    types::{Board, Piece, Side, Square},
+    types::{Piece, Side, Square},
 };
 
 // Global Zobrist random number tables for hashing

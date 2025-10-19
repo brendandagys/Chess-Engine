@@ -13,38 +13,13 @@
 ///
 /// The search tests use various tactical positions to verify the engine finds
 /// optimal moves and correctly evaluates forcing sequences.
+mod test_utils;
+
 use chess_engine::{
     position::Position,
     types::{Piece, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
-use std::sync::Once;
-
-fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
-
-fn reset_move_state(position: &mut Position) {
-    position.ply = 0;
-    position.first_move.iter_mut().for_each(|entry| *entry = -1);
-    position.first_move[0] = 0;
-    position.move_list.iter_mut().for_each(|slot| *slot = None);
-}
-
-/// Helper function to create a position from FEN and prepare for search
-fn position_from_fen(fen: &str) -> Position {
-    ensure_zobrist_initialized();
-    let mut position = Position::new();
-    position
-        .load_fen(fen)
-        .expect(&format!("Failed to load FEN: {}", fen));
-    position.set_material();
-    reset_move_state(&mut position);
-    position
-}
+use test_utils::*;
 
 /// Helper to run a search with fixed depth and return the best move
 fn search_position(fen: &str, depth: u16) -> Option<(Square, Square)> {

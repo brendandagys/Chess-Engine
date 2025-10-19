@@ -1,19 +1,8 @@
-use chess_engine::{position::Position, zobrist_hash::initialize_zobrist_hash_tables};
-use std::sync::Once;
+/// Performance tests (perft) for move generation correctness and performance
+mod test_utils;
 
-fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
-
-fn reset_move_state(position: &mut Position) {
-    position.ply = 0;
-    position.first_move.iter_mut().for_each(|entry| *entry = -1);
-    position.first_move[0] = 0;
-    position.move_list.iter_mut().for_each(|slot| *slot = None);
-}
+use chess_engine::position::Position;
+use test_utils::*;
 
 /// Perform a perft (performance test) from a FEN position to a given depth.
 /// Returns the number of leaf nodes (positions) at the target depth.
@@ -139,21 +128,6 @@ fn square_to_algebraic(square: chess_engine::types::Square) -> String {
     let file = (square as u8 % 8) as char;
     let rank = (square as u8 / 8) + 1;
     format!("{}{}", (b'a' + file as u8) as char, rank)
-}
-
-/// Create a position from a FEN string and prepare it for perft testing
-fn position_from_fen(fen: &str) -> Position {
-    ensure_zobrist_initialized();
-    let mut position = Position::new();
-
-    position
-        .load_fen(fen)
-        .expect(&format!("Failed to load FEN: {}", fen));
-
-    position.set_material();
-    reset_move_state(&mut position);
-
-    position
 }
 
 // ============================================================================

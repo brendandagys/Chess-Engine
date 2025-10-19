@@ -27,7 +27,6 @@ pub struct Position {
     pub pawn_material_score: [usize; NUM_SIDES],
     pub piece_material_score: [usize; NUM_SIDES],
     pub castle: u8, // Castle permissions
-    turn: Side,
     stop_search: bool,
     best_move_from: Option<Square>, // Found from the search/hash
     best_move_to: Option<Square>,   // Found from the search/hash
@@ -47,11 +46,9 @@ pub struct Position {
     passed_pawns_score: [[i32; NUM_SQUARES]; NUM_SIDES], // Score for 7th rank is built into `square_score`
     bit_between: [[BitBoard; NUM_SQUARES]; NUM_SQUARES], // &'ed with `bit_all`. 0-result means nothing blocking the line
     bit_after: [[BitBoard; NUM_SQUARES]; NUM_SQUARES], // Square and those after it in vector are 0
-    bit_pawn_all_captures: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
     bit_pawn_left_captures: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
     bit_pawn_right_captures: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
     bit_pawn_defends: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
-    bit_pawn_moves: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
     bit_knight_moves: [BitBoard; NUM_SQUARES],
     bit_bishop_moves: [BitBoard; NUM_SQUARES],
     bit_rook_moves: [BitBoard; NUM_SQUARES],
@@ -59,8 +56,6 @@ pub struct Position {
     bit_king_moves: [BitBoard; NUM_SQUARES],
     mask_passed: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
     mask_path: [[BitBoard; NUM_SQUARES]; NUM_SIDES],
-    mask: [BitBoard; NUM_SQUARES],
-    not_mask: [BitBoard; NUM_SQUARES],
     mask_column: [BitBoard; NUM_SQUARES],
     mask_isolated: [BitBoard; NUM_SQUARES],
     mask_kingside: BitBoard,
@@ -151,7 +146,6 @@ impl Position {
         [BitBoard; NUM_SQUARES],
         [[i32; NUM_SQUARES]; NUM_SIDES],
         [[i32; NUM_SQUARES]; NUM_SIDES],
-        [[BitBoard; NUM_SQUARES]; NUM_SIDES],
         [[BitBoard; NUM_SQUARES]; NUM_SIDES],
         [[BitBoard; NUM_SQUARES]; NUM_SIDES],
         [[BitBoard; NUM_SQUARES]; NUM_SIDES],
@@ -313,7 +307,6 @@ impl Position {
             pawn_right_index,
             bit_pawn_left_captures,
             bit_pawn_right_captures,
-            bit_pawn_all_captures,
             bit_pawn_defends,
             pawn_plus_index,
             pawn_double_index,
@@ -335,18 +328,6 @@ impl Position {
         }
 
         (mask_queenside, mask_kingside)
-    }
-
-    fn get_base_masks() -> ([BitBoard; NUM_SQUARES], [BitBoard; NUM_SQUARES]) {
-        let mut mask = [BitBoard(0); NUM_SQUARES];
-        let mut not_mask = [BitBoard(!0); NUM_SQUARES];
-
-        for square in Square::iter() {
-            mask[square as usize].set_bit(square);
-            not_mask[square as usize].clear_bit(square);
-        }
-
-        (mask, not_mask)
     }
 
     fn get_bit_between() -> [[BitBoard; NUM_SQUARES]; NUM_SQUARES] {
@@ -689,9 +670,9 @@ impl Position {
         }
 
         if !flip {
-            println!("\n   a  b  c  d  e  f  g  h\n");
+            println!("   a  b  c  d  e  f  g  h\n");
         } else {
-            println!("\n   h  g  f  e  d  c  b  a\n");
+            println!("   h  g  f  e  d  c  b  a\n");
         }
     }
 
@@ -1013,6 +994,9 @@ impl Position {
                 & self.board.bit_units[side.opponent() as usize].0,
         );
 
+        self.display_board(false);
+        king_captures.print();
+
         while king_captures.0 != 0 {
             let square_to = king_captures.next_bit_mut();
 
@@ -1040,6 +1024,12 @@ impl Position {
         self.generate_castle_moves(side, &mut move_count);
 
         // Pawns
+        self.display_board(false);
+        println!("SIDE: {:?}", side);
+        println!("PLY: {}", self.ply);
+        println!("Pawn bitboard:");
+        self.board.bit_pieces[side as usize][Piece::Pawn as usize].print();
+
         match side {
             Side::White => {
                 left_pawn_captures = BitBoard(
@@ -1074,6 +1064,11 @@ impl Position {
                 );
             }
         }
+
+        println!("Left pawn captures bitboard:");
+        left_pawn_captures.print();
+        println!("Right pawn captures bitboard:");
+        right_pawn_captures.print();
 
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
@@ -2457,6 +2452,7 @@ impl Position {
                 }
             };
 
+            println!("PLY      NODES  SCORE  PV");
             print!("{:>3} {:>8} {:>6} ", depth, self.nodes, score,);
 
             if let Some(entry) = self.board.hash.probe() {
@@ -2499,15 +2495,12 @@ impl Position {
             pawn_right_index,
             bit_pawn_left_captures,
             bit_pawn_right_captures,
-            bit_pawn_all_captures,
             bit_pawn_defends,
             pawn_plus_index,
             pawn_double_index,
             not_a_file,
             not_h_file,
         ) = Self::get_pawn_masks();
-
-        let (mask, not_mask) = Self::get_base_masks();
 
         let (square_score, king_endgame_score, passed_pawns_score) = Self::get_score_tables();
 
@@ -2531,7 +2524,6 @@ impl Position {
             pawn_material_score: [0; NUM_SIDES],
             piece_material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
-            turn: Side::White,
             stop_search: false,
             best_move_from: None,
             best_move_to: None,
@@ -2551,11 +2543,9 @@ impl Position {
             passed_pawns_score,
             bit_between: Self::get_bit_between(),
             bit_after: Self::get_bit_after(),
-            bit_pawn_all_captures,
             bit_pawn_left_captures,
             bit_pawn_right_captures,
             bit_pawn_defends,
-            bit_pawn_moves: [[BitBoard(0); NUM_SQUARES]; NUM_SIDES],
             bit_knight_moves: Self::get_knight_moves(),
             bit_bishop_moves,
             bit_rook_moves,
@@ -2563,8 +2553,6 @@ impl Position {
             bit_king_moves: Self::get_king_moves(),
             mask_passed,
             mask_path,
-            mask,     // TODO: Are these actually needed?
-            not_mask, // TODO: Are these actually needed?
             mask_column,
             mask_isolated,
             mask_kingside,

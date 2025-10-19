@@ -10,7 +10,8 @@ use crate::{
 pub struct BitBoard(pub u64);
 
 impl BitBoard {
-    fn print(&self) {
+    #[allow(dead_code)]
+    pub fn print(&self) {
         for rank in (0..NUM_RANKS).rev() {
             for file in 0..NUM_FILES {
                 let bit = (self.0 >> (rank * NUM_FILES + file)) & 1u64;

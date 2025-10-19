@@ -13,19 +13,13 @@
 /// - Positive scores favor white
 /// - Negative scores favor black
 /// - Zero indicates material/positional equality
+mod test_utils;
+
 use chess_engine::{
     position::Position,
     types::{Board, Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
-use std::sync::Once;
-
-fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
+use test_utils::*;
 
 /// Creates a position with only kings (required for valid chess positions)
 fn position_with_kings(side_to_move: Side) -> Position {

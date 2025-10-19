@@ -1,16 +1,10 @@
+mod test_utils;
+
 use chess_engine::{
     position::Position,
     types::{Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
-use std::sync::Once;
-
-fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
+use test_utils::*;
 
 #[test]
 fn test_load_starting_position_from_fen() {

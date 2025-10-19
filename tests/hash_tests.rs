@@ -1,13 +1,13 @@
 /// Unit tests for hash module
-mod hash_test_utils;
+mod test_utils;
 
 use chess_engine::{
     hash::Hash,
     types::{Piece, Side, Square},
     zobrist_hash::initialize_zobrist_hash_tables,
 };
-use hash_test_utils::*;
 use std::sync::Once;
+use test_utils::*;
 
 static INIT: Once = Once::new();
 
