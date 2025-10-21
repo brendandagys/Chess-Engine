@@ -47,6 +47,7 @@ impl ChessEngine {
         println!("h or help - Displays help on the commands");
         println!("d or D    - Displays board and toggles display setting");
         println!("moves     - Displays of list of possible moves");
+        println!("fen       - Displays a FEN string for the current position");
         println!("f         - Flips the board");
         println!("q or quit - Quits the program");
         println!("================= CONTROLLING THE ENGINE =================");
@@ -298,9 +299,9 @@ impl ChessEngine {
                     self.display_disabled = !self.display_disabled;
 
                     if self.display_disabled {
-                        println!("\nBoard display disabled.");
+                        println!("\nBoard display disabled");
                     } else {
-                        println!("\nBoard display enabled.");
+                        println!("\nBoard display enabled");
                         self.display_board();
                     }
                     continue;
@@ -316,6 +317,10 @@ impl ChessEngine {
                 }
                 "h" | "help" => {
                     self.show_help();
+                    continue;
+                }
+                "fen" => {
+                    println!("\n{}", self.position.to_fen());
                     continue;
                 }
                 "moves" => {
@@ -361,7 +366,7 @@ impl ChessEngine {
                 "undo" => {
                     // TODO: Can this be improved? Should set material scores? Why is ply set to 0?
                     if self.position.ply_from_start_of_game == 0 {
-                        println!("\nNo moves to undo.");
+                        println!("\nNo moves to undo");
                         continue;
                     }
                     self.computer_side = None;
@@ -385,7 +390,7 @@ impl ChessEngine {
                         self.position
                             .generate_moves_and_captures(self.position.side);
                         self.display_board();
-                        println!("FEN loaded.");
+                        println!("FEN loaded successfully");
                     }
                     Err(e) => println!("Error loading FEN: {}", e),
                 }
@@ -530,7 +535,6 @@ impl ChessEngine {
             "1" => Side::White,
             "2" => Side::Black,
             "3" => {
-                // Random choice
                 use std::time::SystemTime;
                 let now = SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
@@ -553,7 +557,7 @@ impl ChessEngine {
 
         // If computer is white, let it move first
         if self.computer_side == Some(Side::White) {
-            println!("Computer plays first.");
+            println!("Computer plays first");
         }
     }
 }
@@ -562,7 +566,7 @@ fn main() {
     println!("Brendan's Chess Engine");
     println!("Version 1.0, 2025-10-07");
     println!();
-    println!("\"h or help\" displays a list of commands.");
+    println!("\"h or help\" displays a list of commands");
     println!();
 
     let mut engine = ChessEngine::new();

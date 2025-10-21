@@ -2665,4 +2665,182 @@ impl Position {
 
         Ok(())
     }
+
+    /// Generate and display a FEN (Forsyth-Edwards Notation) string from the current position.
+    ///
+    /// Creates a complete FEN string with all six fields:
+    /// 1. Piece placement (from white's perspective, rank 8 to rank 1)
+    /// 2. Active color ("w" or "b")
+    /// 3. Castling availability (KQkq or "-")
+    /// 4. En passant target square (e.g., "e3" or "-")
+    /// 5. Halfmove clock (number of halfmoves since last capture or pawn advance)
+    /// 6. Fullmove number (starts at 1, increments after Black's move)
+    ///
+    /// The FEN string is printed to stdout.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut position = Position::new();
+    /// position.display_fen();
+    /// // Prints: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+    /// ```
+    pub fn display_fen(&self) {
+        let fen = self.to_fen();
+        println!("{}", fen);
+    }
+
+    /// Generate a FEN (Forsyth-Edwards Notation) string from the current position.
+    ///
+    /// Creates a complete FEN string with all six fields:
+    /// 1. Piece placement (from white's perspective, rank 8 to rank 1)
+    /// 2. Active color ("w" or "b")
+    /// 3. Castling availability (KQkq or "-")
+    /// 4. En passant target square (e.g., "e3" or "-")
+    /// 5. Halfmove clock (number of halfmoves since last capture or pawn advance)
+    /// 6. Fullmove number (starts at 1, increments after Black's move)
+    ///
+    /// # Returns
+    /// A String containing the FEN notation
+    ///
+    /// # Example
+    /// ```ignore
+    /// let mut position = Position::new();
+    /// let fen = position.to_fen();
+    /// assert_eq!(fen, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    /// ```
+    pub fn to_fen(&self) -> String {
+        let mut fen = String::new();
+
+        // 1. Piece placement (from rank 8 to rank 1)
+        for rank in (0..8).rev() {
+            let mut empty_count = 0;
+
+            for file in 0..8 {
+                let square_idx = rank * 8 + file;
+                let square = Square::try_from(square_idx as u8).unwrap();
+                let piece = self.board.value[square as usize];
+
+                if piece == Piece::Empty {
+                    empty_count += 1;
+                } else {
+                    if empty_count > 0 {
+                        fen.push_str(&empty_count.to_string());
+                        empty_count = 0;
+                    }
+
+                    let is_white = self.board.bit_units[Side::White as usize].is_bit_set(square);
+
+                    let piece_char = match piece {
+                        Piece::King => {
+                            if is_white {
+                                'K'
+                            } else {
+                                'k'
+                            }
+                        }
+                        Piece::Queen => {
+                            if is_white {
+                                'Q'
+                            } else {
+                                'q'
+                            }
+                        }
+                        Piece::Rook => {
+                            if is_white {
+                                'R'
+                            } else {
+                                'r'
+                            }
+                        }
+                        Piece::Bishop => {
+                            if is_white {
+                                'B'
+                            } else {
+                                'b'
+                            }
+                        }
+                        Piece::Knight => {
+                            if is_white {
+                                'N'
+                            } else {
+                                'n'
+                            }
+                        }
+                        Piece::Pawn => {
+                            if is_white {
+                                'P'
+                            } else {
+                                'p'
+                            }
+                        }
+                        Piece::Empty => unreachable!(),
+                    };
+                    fen.push(piece_char);
+                }
+            }
+
+            if empty_count > 0 {
+                fen.push_str(&empty_count.to_string());
+            }
+
+            if rank > 0 {
+                fen.push('/');
+            }
+        }
+
+        // 2. Active color
+        fen.push(' ');
+        fen.push(if self.side == Side::White { 'w' } else { 'b' });
+
+        // 3. Castling availability
+        fen.push(' ');
+        let mut castle_str = String::new();
+        if self.castle & 1 != 0 {
+            castle_str.push('K');
+        }
+        if self.castle & 2 != 0 {
+            castle_str.push('Q');
+        }
+        if self.castle & 4 != 0 {
+            castle_str.push('k');
+        }
+        if self.castle & 8 != 0 {
+            castle_str.push('q');
+        }
+        fen.push_str(if castle_str.is_empty() {
+            "-"
+        } else {
+            &castle_str
+        });
+
+        // 4. En passant target square
+        fen.push(' ');
+        if self.ply_from_start_of_game > 0 {
+            if let Some(game) = self.game_list[self.ply_from_start_of_game] {
+                if let Some(ep_file) = game.en_passant_file {
+                    // Calculate the en passant target square
+                    let ep_rank = if self.side == Side::White { 5 } else { 2 };
+                    fen.push((b'a' + ep_file) as char);
+                    fen.push((b'1' + ep_rank) as char);
+                } else {
+                    fen.push('-');
+                }
+            } else {
+                fen.push('-');
+            }
+        } else {
+            fen.push('-');
+        }
+
+        // 5. Halfmove clock
+        fen.push(' ');
+        fen.push_str(&self.fifty.to_string());
+
+        // 6. Fullmove number
+        fen.push(' ');
+        let fullmove = (self.ply_from_start_of_game / 2) + 1;
+        fen.push_str(&fullmove.to_string());
+
+        fen
+    }
 }
