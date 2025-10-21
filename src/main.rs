@@ -288,7 +288,7 @@ impl ChessEngine {
 
             let command = input.trim();
 
-            // Check for commands first
+            // COMMANDS WITHOUT PARAMETERS
             match command {
                 "d" => {
                     self.position.display_board(self.flip);
@@ -359,6 +359,7 @@ impl ChessEngine {
                     continue;
                 }
                 "undo" => {
+                    // TODO: Can this be improved? Should set material scores? Why is ply set to 0?
                     if self.position.ply_from_start_of_game == 0 {
                         println!("\nNo moves to undo.");
                         continue;
@@ -366,9 +367,7 @@ impl ChessEngine {
                     self.computer_side = None;
                     self.position.take_back_move();
                     self.position.ply = 0;
-                    if self.position.first_move[0] != 0 {
-                        self.position.first_move[0] = 0;
-                    }
+                    self.position.first_move[0] = 0;
                     self.position
                         .generate_moves_and_captures(self.position.side);
                     self.display_board();
@@ -377,8 +376,7 @@ impl ChessEngine {
                 _ => {}
             }
 
-            // Handle commands with parameters
-
+            // COMMANDS WITH PARAMETERS
             if command.starts_with("fen ") {
                 let fen_str = &command[4..];
                 match self.position.load_fen(fen_str) {
@@ -415,30 +413,46 @@ impl ChessEngine {
                 continue;
             }
 
-            // Try to parse as from square for a move
-            let from_square = self.parse_square(command);
+            // PARSE "FROM" AND THEN "TO" SQUARE
+            let from_square = self.parse_square(command[..2].trim());
             if from_square.is_none() {
                 println!("\nInvalid from square");
                 continue;
             }
             let from_square = from_square.unwrap();
 
-            // Get to square
-            print!("             To square > ");
-            io::stdout().flush().unwrap();
-
             let mut to_input = String::new();
-            match io::stdin().read_line(&mut to_input) {
-                Ok(0) => return,
-                Ok(_) => {}
-                Err(_) => return,
-            }
 
-            println!();
+            let cleaned_command = command.replace(" ", "");
+
+            match cleaned_command.len() {
+                // Need to prompt for "to" square
+                2 => {
+                    // Get to square
+                    print!("             To square > ");
+                    io::stdout().flush().unwrap();
+
+                    match io::stdin().read_line(&mut to_input) {
+                        Ok(0) => return,
+                        Ok(_) => {}
+                        Err(_) => return,
+                    }
+
+                    println!();
+                }
+                // "to" square is included in command
+                4 => {
+                    to_input = cleaned_command[2..].to_string();
+                }
+                _ => {
+                    println!("\nInvalid command format");
+                    continue;
+                }
+            }
 
             let to_square = self.parse_square(to_input.trim());
             if to_square.is_none() {
-                println!("Invalid to square");
+                println!("\nInvalid to square");
                 continue;
             }
             let to_square = to_square.unwrap();
