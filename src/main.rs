@@ -223,7 +223,7 @@ impl ChessEngine {
                 // Set search parameters
                 self.position.max_depth = self.max_depth;
                 self.position.max_search_duration_ms = self.max_search_duration_ms;
-                self.position.fixed_time = true;
+                self.position.fixed_time = self.fixed_time;
                 self.position.fixed_depth = self.fixed_depth;
 
                 self.position.think();
