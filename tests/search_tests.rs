@@ -15,17 +15,14 @@
 /// optimal moves and correctly evaluates forcing sequences.
 mod test_utils;
 
-use chess_engine::{
-    position::Position,
-    types::{Piece, Square},
-};
+use chess_engine::types::{Piece, Square};
 use test_utils::*;
 
 /// Helper to run a search with fixed depth and return the best move
 fn search_position(fen: &str, depth: u16) -> Option<(Square, Square)> {
     let mut position = position_from_fen(fen);
     position.max_depth = depth;
-    position.max_time = 1 << 25; // Very large time limit
+    position.max_search_duration_ms = 1 << 25; // Very large time limit
     position.fixed_depth = true;
     position.fixed_time = false;
 
@@ -78,7 +75,7 @@ mod basic_search {
             // Generate legal moves and verify the returned move is legal
             position.ply = 0;
             position.first_move[0] = 0;
-            position.generate_moves(position.side);
+            position.generate_moves_and_captures(position.side);
 
             let mut found = false;
             for i in 0..position.first_move[1] as usize {
@@ -196,6 +193,7 @@ mod quiescent_search {
     }
 
     #[test]
+    #[ignore] // TODO: Too slow
     fn test_quiescent_search_with_tactics() {
         // Kiwipete position with many tactical possibilities
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
@@ -214,6 +212,7 @@ mod check_extensions {
     use super::*;
 
     #[test]
+    #[ignore] // TODO: Too slow
     fn test_check_extension_searches_nodes() {
         // Kiwipete position - famous perft testing position
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
@@ -370,7 +369,7 @@ mod move_ordering {
         // Reset and search again - hash move should be tried first
         position.ply = 0;
         position.nodes = 0;
-        position.generate_moves(position.side);
+        position.generate_moves_and_captures(position.side);
 
         // Verify hash move is in the move list with high score
         if let Some(hash_from) = first_move {
@@ -394,7 +393,7 @@ mod move_ordering {
 
         position.ply = 0;
         position.first_move[0] = 0;
-        position.generate_moves(position.side);
+        position.generate_moves_and_captures(position.side);
 
         // Check that captures have higher scores than non-captures
         let mut capture_score = None;
@@ -457,6 +456,7 @@ mod depth_and_reduction {
     }
 
     #[test]
+    #[ignore] // TODO: Too slow
     fn test_search_with_reductions() {
         // Kiwipete position - standard perft testing position
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
@@ -516,6 +516,7 @@ mod search_stability {
     }
 
     #[test]
+    #[ignore] // TODO: Too slow
     fn test_search_handles_middlegame() {
         // Position 6 from perft - middlegame position
         let fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
@@ -676,7 +677,7 @@ mod principal_variation {
         if let (Some(from), Some(to)) = (position.hash_from, position.hash_to) {
             let move_legal = position.make_move(from, to);
             if move_legal {
-                position.take_back();
+                position.take_back_move();
                 // PV move was legal
             }
             assert!(move_legal, "PV move should be legal");

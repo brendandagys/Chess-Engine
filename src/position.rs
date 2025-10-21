@@ -17,8 +17,8 @@ pub struct Position {
     // DYNAMIC
     pub move_list: [Option<Move>; MOVE_STACK],
     pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
-    pub game_list: [Option<Game>; GAME_STACK],
-    pub fifty: u8,    // Moves since last pawn move or capture (up to 100-ply)
+    pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
+    pub fifty: u8,                    // Moves since last pawn move or capture (up to 100-ply)
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
     pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
     pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
@@ -32,11 +32,11 @@ pub struct Position {
     best_move_to: Option<Square>,   // Found from the search/hash
     pub hash_from: Option<Square>,
     pub hash_to: Option<Square>,
-    pub start_time: u64,
+    pub start_time: u64, // Start timestamp of search from this position
     stop_time: u64,
-    pub max_time: u32,
+    pub max_search_duration_ms: u32,
     pub fixed_time: bool,
-    pub max_depth: u16,
+    pub max_depth: u16, // Soft limit for search depth (in ply)
     pub fixed_depth: bool,
     // STATIC
     pub side: Side,
@@ -576,10 +576,10 @@ impl Position {
         (square_score, king_endgame_score, passed_pawns_score)
     }
 
-    pub fn new_position(&mut self) {
-        // Note: Material scores are set by set_material() called after FEN loading
-        // The board pieces are already correctly set up from FEN loading or Position::new()
-        // so we don't need to re-add them here (doing so would corrupt the hash by double-toggling)
+    /// Material scores are set by `set_material()`, called after FEN loading.
+    /// The board pieces are already correctly set up from FEN loading or `Position::new()`,
+    /// so we don't need to re-add them here (doing so would corrupt the hash by double-toggling).
+    pub fn set_material_scores(&mut self) {
         self.piece_material_score = [0; NUM_SIDES];
         self.pawn_material_score = [0; NUM_SIDES];
 
@@ -678,9 +678,9 @@ impl Position {
         }
 
         if !flip {
-            println!("   a  b  c  d  e  f  g  h\n");
+            println!("   a  b  c  d  e  f  g  h");
         } else {
-            println!("   h  g  f  e  d  c  b  a\n");
+            println!("   h  g  f  e  d  c  b  a");
         }
     }
 
@@ -1018,7 +1018,7 @@ impl Position {
         }
     }
 
-    fn generate_moves_and_captures(&mut self, side: Side) {
+    pub fn generate_moves_and_captures(&mut self, side: Side) {
         let mut left_pawn_captures;
         let mut right_pawn_captures;
         let mut unblocked_pawns;
@@ -1508,38 +1508,6 @@ impl Position {
         self.first_move[self.ply + 1] = move_count;
     }
 
-    pub fn generate_moves(&mut self, side: Side) {
-        self.generate_moves_and_captures(side);
-    }
-
-    pub fn set_material(&mut self) {
-        self.pawn_material_score = [0; 2];
-        self.piece_material_score = [0; 2];
-
-        for square in 0..64 {
-            let piece = self.board.value[square];
-            if piece != Piece::Empty {
-                let side_idx = if self.board.bit_units[Side::White as usize]
-                    .is_bit_set(Square::try_from(square as u8).unwrap())
-                {
-                    0
-                } else {
-                    1
-                };
-
-                if piece == Piece::Pawn {
-                    self.pawn_material_score[side_idx] += piece.value() as usize;
-                } else {
-                    self.piece_material_score[side_idx] += piece.value() as usize;
-                }
-            }
-        }
-    }
-
-    pub fn take_back(&mut self) {
-        self.take_back_move();
-    }
-
     pub fn reps(&self) -> usize {
         let mut count = 0;
         let mut i = self.ply_from_start_of_game;
@@ -1825,69 +1793,6 @@ impl Position {
         }
     }
 
-    fn make_recapture(&mut self, from: Square, to: Square) -> bool {
-        let mut game = self.game_list[self.ply_from_start_of_game].unwrap_or(Game::new());
-
-        game.from = from;
-        game.to = to;
-        game.capture = self.board.value[to as usize];
-
-        self.game_list[self.ply_from_start_of_game] = Some(game);
-
-        self.ply += 1;
-        self.ply_from_start_of_game += 1;
-
-        self.board
-            .remove_piece(self.side.opponent(), self.board.value[to as usize], to);
-        self.board
-            .update_piece(self.side, self.board.value[from as usize], from, to);
-
-        let original_side = self.side;
-        let original_opponent_side = self.side.opponent();
-
-        self.side = self.side.opponent();
-        self.other_side = self.other_side.opponent();
-
-        self.board.hash.toggle_side_to_move();
-
-        // Undo upon check
-        if self.is_square_attacked_by_side(
-            original_opponent_side,
-            self.board.bit_pieces[original_side as usize][Piece::King as usize].into(),
-        ) {
-            self.take_back_recapture();
-            return false;
-        }
-
-        true
-    }
-
-    fn take_back_recapture(&mut self) {
-        let original_side = self.side;
-        let original_opponent_side = self.side.opponent();
-
-        self.side = self.side.opponent();
-        self.other_side = self.other_side.opponent();
-
-        self.board.hash.toggle_side_to_move();
-
-        self.ply -= 1;
-        self.ply_from_start_of_game -= 1;
-
-        let game = self.game_list[self.ply_from_start_of_game].expect("No game to unmake");
-
-        let from = game.from;
-        let to = game.to;
-
-        self.board.update_piece(
-            original_opponent_side,
-            self.board.value[to as usize],
-            to,
-            from,
-        );
-        self.board.add_piece(original_side, game.capture, to);
-    }
-
     fn evaluate_pawn(
         &self,
         side: Side,
@@ -2079,87 +1984,39 @@ impl Position {
         }
     }
 
-    fn recapture_search(&mut self, mut from: Square, to: Square) -> i32 {
-        let mut score = [0; 12];
-        let mut capture_count = 0;
-        let mut transaction_count = 0;
-
-        // Even indexes contain opponent's captured piece values
-        score[0] = self.board.value[to as usize].value();
-        score[1] = self.board.value[from as usize].value();
-
-        let mut total_score = 0;
-
-        while capture_count < 10 {
-            if !self.make_recapture(from, to) {
-                break;
-            }
-
-            capture_count += 1;
-            transaction_count += 1;
-            self.nodes += 1;
-
-            let lowest_value_attacking_square =
-                // `make_recapture()` will toggle the side
-                self.get_square_of_lowest_value_attacker_of_square(self.side, to);
-
-            match lowest_value_attacking_square {
-                Some(square) => {
-                    score[capture_count + 1] = self.board.value[square as usize].value();
-
-                    // Stop if capturing piece value is more that that of the captured piece + next attacker
-                    if score[capture_count] > score[capture_count - 1] + score[capture_count + 1] {
-                        capture_count -= 1;
-                        break;
-                    }
-
-                    from = square;
-                }
-                None => {
-                    break;
-                }
-            }
-        }
-
-        // Pruning
-        while capture_count > 1 {
-            if score[capture_count - 1] >= score[capture_count - 2] {
-                capture_count -= 2;
-            } else {
-                break;
-            }
-        }
-
-        for i in 0..capture_count {
-            total_score += if i % 2 == 0 { score[i] } else { -score[i] };
-        }
-
-        while transaction_count > 0 {
-            self.take_back_recapture();
-            transaction_count -= 1;
-        }
-
-        total_score
-    }
-
+    /// Quiescent search extends the regular search by only examining
+    /// capturing moves until the position becomes "quiet" (no more captures).
+    /// This avoids the horizon effect where the engine stops searching
+    /// in the middle of a tactical sequence. This function is recursive.
+    ///
+    /// # Arguments
+    /// * `alpha` - The best score the maximizing player can guarantee
+    /// * `beta` - The best score the minimizing player can guarantee
+    ///
+    /// # Returns
+    /// The best score achievable from this position with optimal play
+    /// from both sides, bounded by the alpha-beta window.
+    ///
+    /// # Algorithm
+    /// 1. Evaluate the current position (stand pat)
+    /// 2. Check for beta cutoff (position too good)
+    /// 3. Update alpha if stand pat improves it
+    /// 4. Generate and search all capture moves recursively until the position is quiet (base case)
+    /// 5. Apply alpha-beta pruning to reduce search space
     fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
-        // Increment node count
         self.nodes += 1;
 
-        // Get static evaluation (stand pat score)
         let stand_pat = self.evaluate_position();
 
-        // Stand pat cutoff
+        // Beta cutoff
         if stand_pat >= beta {
-            return stand_pat;
+            return beta;
         }
 
-        // Update alpha if stand pat is better
         if stand_pat > alpha {
             alpha = stand_pat;
         }
 
-        // Generate only capture moves
         self.generate_captures(self.side);
         let move_list_start = self.first_move[self.ply] as usize;
         let move_list_end = self.first_move[self.ply + 1] as usize;
@@ -2200,15 +2057,15 @@ impl Position {
     }
 
     fn check_if_time_is_exhausted(&mut self) {
-        if (get_time() >= self.stop_time || (self.max_time < 50 && self.ply > 1))
-            && !self.fixed_depth
-            && self.ply > 1
-        {
+        // if (get_time() >= self.stop_time || (self.max_search_duration_ms < 50 && self.ply > 1))
+        if get_time() >= self.stop_time && !self.fixed_depth && self.ply > 1 {
             self.stop_search = true;
             panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
         }
     }
 
+    /// Incrementally sort the move list by selecting the best move from the
+    /// unsorted portion and swapping it to the front, utilizing selection sort.
     fn sort(&mut self, from_index: isize) {
         let mut best_score = self.move_list[from_index as usize].unwrap().score;
         let mut best_score_index = from_index;
@@ -2268,10 +2125,10 @@ impl Position {
 
         // Periodically check if time has expired
         if self.nodes & 4095 == 0 {
-            self.check_if_time_is_exhausted();
+            self.check_if_time_is_exhausted(); // TODO: Simplify? Improve time control options
         }
 
-        // Safety check: don't search too deep
+        // Hard cutoff at maximum ply
         if self.ply >= MAX_PLY - 1 {
             return self.evaluate_position();
         }
@@ -2281,6 +2138,7 @@ impl Position {
             .next_bit()
             .try_into()
             .expect("Failed to convert square to Square");
+
         let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
 
         // Generate all legal moves
@@ -2288,13 +2146,14 @@ impl Position {
         let move_list_start = self.first_move[self.ply] as usize;
         let move_list_end = self.first_move[self.ply + 1] as usize;
 
-        let mut best_value = -100000; // -infinity
+        let mut best_score = -100000; // Alpha: -infinity
         let mut best_move: Option<Move> = None;
+
         let mut legal_moves_count = 0;
 
         // Search all moves
         for move_index in move_list_start..move_list_end {
-            // Pick the best remaining move (incremental sort)
+            // Pick the best remaining move (selection sort)
             self.sort(move_index as isize);
 
             let current_move = self.move_list[move_index].unwrap();
@@ -2314,15 +2173,12 @@ impl Position {
             // Recursively search with negated window
             let score = -self.search(-beta, -alpha, depth - 1);
 
-            // Take back the move
             self.take_back_move();
 
-            // Update best value
-            if score > best_value {
-                best_value = score;
+            if score > best_score {
+                best_score = score;
                 best_move = Some(current_move);
 
-                // Update alpha (acts like max in minimax)
                 if score > alpha {
                     alpha = score;
                 }
@@ -2330,7 +2186,7 @@ impl Position {
 
             // Beta cutoff
             if score >= beta {
-                return best_value; // Fail-soft beta-cutoff
+                return best_score; // Fail-soft beta-cutoff
             }
         }
 
@@ -2358,7 +2214,7 @@ impl Position {
             }
         }
 
-        best_value
+        best_score
     }
 
     /// Launch the search using iterative deepening.
@@ -2367,24 +2223,25 @@ impl Position {
         // Initialize search state
         self.stop_search = false;
         self.start_time = get_time();
-        self.stop_time = self.start_time + self.max_time as u64;
+        self.stop_time = self.start_time + self.max_search_duration_ms as u64;
         self.ply = 0;
         self.nodes = 0;
 
-        // Reset material scores
-        self.new_position();
+        self.set_material_scores();
 
-        println!("\nPLY      NODES  SCORE  PV");
+        println!("\nPLY         NODES     SCORE      PV");
 
         // Iterative deepening: search depth 1, 2, 3, ... up to max_depth
         for depth in 1..=self.max_depth {
-            // Check if we should stop before starting next depth
+            // Check if time limit is exceeded before starting next depth
+            // Prevent a depth iteration that likely won't finish
             if !self.fixed_depth && self.max_depth > 1 {
                 let elapsed = get_time() - self.start_time;
+
                 let time_limit = if self.fixed_time {
-                    self.max_time as u64
+                    self.max_search_duration_ms as u64
                 } else {
-                    self.max_time as u64 / 4
+                    self.max_search_duration_ms as u64 / 4
                 };
 
                 if elapsed >= time_limit {
@@ -2392,7 +2249,6 @@ impl Position {
                 }
             }
 
-            // Ensure ply is reset before starting search
             self.ply = 0;
             self.first_move[0] = 0;
 
@@ -2423,7 +2279,7 @@ impl Position {
             }
 
             // Display search results
-            print!("{:>3} {:>8} {:>6} ", depth, self.nodes, score);
+            print!("{:>3}  {:>12}  {:>8}   ", depth, self.nodes, score);
 
             // Display best move
             if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
@@ -2499,7 +2355,7 @@ impl Position {
             hash_to: None,
             start_time: 0,
             stop_time: 0,
-            max_time: 0u32,
+            max_search_duration_ms: 0u32,
             fixed_time: false,
             max_depth: 0,
             fixed_depth: false,

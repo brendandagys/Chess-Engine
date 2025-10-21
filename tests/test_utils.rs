@@ -80,7 +80,7 @@ pub fn position_from_fen(fen: &str) -> Position {
     position
         .load_fen(fen)
         .expect(&format!("Failed to load FEN: {}", fen));
-    position.set_material();
+    position.set_material_scores();
     reset_move_state(&mut position);
     position.display_board(false);
     position
