@@ -520,7 +520,7 @@ impl ChessEngine {
         println!("1. White");
         println!("2. Black");
         println!("3. Random");
-        print!("Enter choice (1-3)> ");
+        print!("\nEnter choice (1-3) > ");
         io::stdout().flush().unwrap();
 
         let mut input = String::new();
@@ -528,6 +528,8 @@ impl ChessEngine {
             Ok(_) => {}
             Err(_) => return,
         }
+
+        println!();
 
         let choice = input.trim();
 
@@ -541,8 +543,10 @@ impl ChessEngine {
                     .unwrap()
                     .as_secs();
                 if now % 2 == 0 {
+                    println!("You are playing as white");
                     Side::White
                 } else {
+                    println!("You are playing as black");
                     Side::Black
                 }
             }
@@ -552,13 +556,7 @@ impl ChessEngine {
             }
         };
 
-        println!("You are playing as {:?}", player_side);
         self.computer_side = Some(player_side.opponent());
-
-        // If computer is white, let it move first
-        if self.computer_side == Some(Side::White) {
-            println!("Computer plays first");
-        }
     }
 }
 

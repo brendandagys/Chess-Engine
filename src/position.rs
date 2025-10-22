@@ -2124,7 +2124,7 @@ impl Position {
         self.nodes += 1;
 
         // Periodically check if time has expired
-        if self.nodes & 4095 == 0 {
+        if self.nodes & 255 == 0 {
             self.check_if_time_is_exhausted(); // TODO: Simplify? Improve time control options
         }
 
