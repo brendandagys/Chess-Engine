@@ -24,8 +24,9 @@ pub struct Position {
     pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
     pub board: Board,
     history_table: [[isize; NUM_SQUARES]; NUM_SQUARES], // [from][to] = score
-    pub pawn_material_score: [usize; NUM_SIDES],
-    pub piece_material_score: [usize; NUM_SIDES],
+    pub pawn_engine_score: [usize; NUM_SIDES],
+    pub piece_engine_score: [usize; NUM_SIDES],
+    pub material_score: [usize; NUM_SIDES],
     pub castle: u8,                 // Castle permissions
     best_move_from: Option<Square>, // Found from the search/hash
     best_move_to: Option<Square>,   // Found from the search/hash
@@ -576,8 +577,9 @@ impl Position {
     /// The board pieces are already correctly set up from FEN loading or `Position::new()`,
     /// so we don't need to re-add them here (doing so would corrupt the hash by double-toggling).
     pub fn set_material_scores(&mut self) {
-        self.piece_material_score = [0; NUM_SIDES];
-        self.pawn_material_score = [0; NUM_SIDES];
+        self.piece_engine_score = [0; NUM_SIDES];
+        self.pawn_engine_score = [0; NUM_SIDES];
+        self.material_score = [0; NUM_SIDES];
 
         // Recalculate material scores from current board state
         for square in Square::iter() {
@@ -591,10 +593,12 @@ impl Position {
                 };
 
                 if piece == Piece::Pawn {
-                    self.pawn_material_score[side_idx] += piece.value() as usize;
+                    self.pawn_engine_score[side_idx] += piece.value() as usize;
                 } else {
-                    self.piece_material_score[side_idx] += piece.value() as usize;
+                    self.piece_engine_score[side_idx] += piece.value() as usize;
                 }
+
+                self.material_score[side_idx] += piece.traditional_value() as usize;
             }
         }
     }
@@ -678,6 +682,39 @@ impl Position {
         } else {
             println!("   h  g  f  e  d  c  b  a");
         }
+
+        // Display material scores
+        let white_engine_score = self.pawn_engine_score[Side::White as usize]
+            + self.piece_engine_score[Side::White as usize];
+        let black_engine_score = self.pawn_engine_score[Side::Black as usize]
+            + self.piece_engine_score[Side::Black as usize];
+
+        let diff = self.material_score[Side::White as usize]
+            .abs_diff(self.material_score[Side::Black as usize]);
+
+        let (white_advantage, black_advantage) = match self.material_score[Side::White as usize]
+            .cmp(&self.material_score[Side::Black as usize])
+        {
+            std::cmp::Ordering::Greater => (diff, 0),
+            std::cmp::Ordering::Less => (0, diff),
+            std::cmp::Ordering::Equal => (0, 0),
+        };
+
+        println!(
+            "\nMaterial: W - {}{} | B - {}{}",
+            white_engine_score,
+            if white_advantage > 0 {
+                format!(" (+{})", white_advantage)
+            } else {
+                "".to_string()
+            },
+            black_engine_score,
+            if black_advantage > 0 {
+                format!(" (+{})", black_advantage)
+            } else {
+                "".to_string()
+            }
+        );
     }
 
     fn display_move(from: Square, to: Square) {
@@ -2346,8 +2383,9 @@ impl Position {
             ply_from_start_of_game: 0,
             board: Board::new(),
             history_table: [[0; NUM_SQUARES]; NUM_SQUARES],
-            pawn_material_score: [0; NUM_SIDES],
-            piece_material_score: [0; NUM_SIDES],
+            pawn_engine_score: [0; NUM_SIDES],
+            piece_engine_score: [0; NUM_SIDES],
+            material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
             best_move_from: None,
             best_move_to: None,

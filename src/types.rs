@@ -171,6 +171,18 @@ impl Piece {
         }
     }
 
+    pub const fn traditional_value(self) -> u8 {
+        match self {
+            Piece::Pawn => 1,
+            Piece::Knight => 3,
+            Piece::Bishop => 3,
+            Piece::Rook => 5,
+            Piece::Queen => 9,
+            Piece::King => 0, // King is invaluable in traditional scoring
+            Piece::Empty => 0,
+        }
+    }
+
     pub fn iter() -> impl Iterator<Item = Piece> {
         [
             Piece::Pawn,

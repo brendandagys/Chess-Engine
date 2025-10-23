@@ -190,10 +190,10 @@ impl ChessEngine {
         }
 
         // Check for stalemate with insufficient material
-        if self.position.pawn_material_score[0] == 0
-            && self.position.pawn_material_score[1] == 0
-            && self.position.piece_material_score[0] <= 300
-            && self.position.piece_material_score[1] <= 300
+        if self.position.pawn_engine_score[0] == 0
+            && self.position.pawn_engine_score[1] == 0
+            && self.position.piece_engine_score[0] <= 300 // TODO: Isn't a king worth way more?? Test.
+            && self.position.piece_engine_score[1] <= 300
         {
             println!("{{Stalemate}}");
             self.new_game();
