@@ -195,7 +195,7 @@ impl ChessEngine {
             && self.position.piece_material_score[0] <= 300
             && self.position.piece_material_score[1] <= 300
         {
-            println!("1/2-1/2 {{Stalemate}}");
+            println!("{{Stalemate}}");
             self.new_game();
             self.computer_side = None;
             return;
@@ -205,7 +205,7 @@ impl ChessEngine {
             self.position
                 .generate_moves_and_captures(self.position.side);
             self.display_board();
-            println!("GAME OVER ");
+            println!("\nGAME OVER ");
 
             let king_square = self.position.board.bit_pieces[self.position.side as usize]
                 [Piece::King as usize]
@@ -216,22 +216,22 @@ impl ChessEngine {
                 Square::try_from(king_square).unwrap(),
             ) {
                 if self.position.side == Side::White {
-                    println!("0-1 {{Black mates}}");
+                    println!("{{Black mates}}");
                 } else {
-                    println!("1-0 {{White mates}}");
+                    println!("{{White mates}}");
                 }
             } else {
-                println!("1/2-1/2 {{Stalemate}}");
+                println!("{{Stalemate}}");
             }
 
             self.new_game();
             self.computer_side = None;
         } else if self.position.reps() >= 3 {
-            println!("1/2-1/2 {{Draw by repetition}}");
+            println!("{{Draw by repetition}}");
             self.new_game();
             self.computer_side = None;
         } else if self.position.fifty >= 100 {
-            println!("1/2-1/2 {{Draw by fifty move rule}}");
+            println!("{{Draw by fifty move rule}}");
             self.new_game();
             self.computer_side = None;
         }
