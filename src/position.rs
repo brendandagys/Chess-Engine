@@ -9,8 +9,8 @@ use crate::{
         NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE,
         QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
+    time::TimeManager,
     types::{BitBoard, Board, Game, Move, Piece, Side, Square},
-    utils::get_time,
 };
 
 pub struct Position {
@@ -26,18 +26,15 @@ pub struct Position {
     history_table: [[isize; NUM_SQUARES]; NUM_SQUARES], // [from][to] = score
     pub pawn_material_score: [usize; NUM_SIDES],
     pub piece_material_score: [usize; NUM_SIDES],
-    pub castle: u8, // Castle permissions
-    stop_search: bool,
+    pub castle: u8,                 // Castle permissions
     best_move_from: Option<Square>, // Found from the search/hash
     best_move_to: Option<Square>,   // Found from the search/hash
     pub hash_from: Option<Square>,
     pub hash_to: Option<Square>,
-    pub start_time: u64, // Start timestamp of search from this position
-    stop_time: u64,
-    pub max_search_duration_ms: u32,
-    pub fixed_time: bool,
     pub max_depth: u16, // Soft limit for search depth (in ply)
     pub fixed_depth: bool,
+    pub time_manager: TimeManager,
+    stop_search: bool,
     // STATIC
     pub side: Side,
     pub other_side: Side,
@@ -1940,6 +1937,7 @@ impl Position {
         score[0] - score[1]
     }
 
+    #[allow(dead_code)]
     fn set_hash_move(&mut self) {
         for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
             if let Some(ref mut move_) = self.move_list[i as usize] {
@@ -1953,6 +1951,7 @@ impl Position {
         }
     }
 
+    #[allow(dead_code)]
     fn display_principal_variation(&mut self, depth: u16) {
         self.best_move_from = self.hash_from;
         self.best_move_to = self.hash_to;
@@ -2006,6 +2005,10 @@ impl Position {
     fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
         self.nodes += 1;
 
+        if self.nodes & 1023 == 0 {
+            self.check_if_time_is_exhausted();
+        }
+
         let stand_pat = self.evaluate_position();
 
         // Beta cutoff
@@ -2057,9 +2060,9 @@ impl Position {
     }
 
     fn check_if_time_is_exhausted(&mut self) {
-        // if (get_time() >= self.stop_time || (self.max_search_duration_ms < 50 && self.ply > 1))
-        if get_time() >= self.stop_time && !self.fixed_depth && self.ply > 1 {
+        if !self.fixed_depth && self.time_manager.is_hard_limit_reached() {
             self.stop_search = true;
+            // TODO: Remove panic
             panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
         }
     }
@@ -2123,9 +2126,8 @@ impl Position {
         // Increment node count
         self.nodes += 1;
 
-        // Periodically check if time has expired
-        if self.nodes & 255 == 0 {
-            self.check_if_time_is_exhausted(); // TODO: Simplify? Improve time control options
+        if self.nodes & 1023 == 0 {
+            self.check_if_time_is_exhausted();
         }
 
         // Hard cutoff at maximum ply
@@ -2221,9 +2223,6 @@ impl Position {
     /// Searches progressively deeper until maximum depth is reached or time runs out.
     pub fn think(&mut self) {
         // Initialize search state
-        self.stop_search = false;
-        self.start_time = get_time();
-        self.stop_time = self.start_time + self.max_search_duration_ms as u64;
         self.ply = 0;
         self.nodes = 0;
 
@@ -2231,20 +2230,11 @@ impl Position {
 
         println!("\nPLY         NODES     SCORE      PV");
 
-        // Iterative deepening: search depth 1, 2, 3, ... up to max_depth
+        // Iterative deepening: search depth 1, 2, 3, ... up to (including) max_depth
         for depth in 1..=self.max_depth {
-            // Check if time limit is exceeded before starting next depth
-            // Prevent a depth iteration that likely won't finish
-            if !self.fixed_depth && self.max_depth > 1 {
-                let elapsed = get_time() - self.start_time;
-
-                let time_limit = if self.fixed_time {
-                    self.max_search_duration_ms as u64
-                } else {
-                    self.max_search_duration_ms as u64 / 4
-                };
-
-                if elapsed >= time_limit {
+            // Soft time limit to avoid starting a depth that won't finish
+            if !self.fixed_depth && self.max_depth > 1 && depth > 1 {
+                if self.time_manager.is_soft_limit_reached() {
                     break;
                 }
             }
@@ -2307,7 +2297,7 @@ impl Position {
         }
     }
 
-    pub fn new() -> Self {
+    pub fn new(time_manager: TimeManager) -> Self {
         let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
 
         let (
@@ -2348,17 +2338,14 @@ impl Position {
             pawn_material_score: [0; NUM_SIDES],
             piece_material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
-            stop_search: false,
             best_move_from: None,
             best_move_to: None,
             hash_from: None,
             hash_to: None,
-            start_time: 0,
-            stop_time: 0,
-            max_search_duration_ms: 0u32,
-            fixed_time: false,
             max_depth: 0,
             fixed_depth: false,
+            time_manager,
+            stop_search: false,
             // Static
             side: Side::White,
             other_side: Side::Black,

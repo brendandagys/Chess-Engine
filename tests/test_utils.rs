@@ -5,6 +5,7 @@ use std::sync::Once;
 /// Shared test utilities for hash-related tests
 use chess_engine::{
     position::Position,
+    time::TimeManager,
     types::{Move, Piece, Side, Square},
     zobrist_hash::initialize_zobrist_hash_tables,
 };
@@ -76,7 +77,7 @@ pub fn reset_move_state(position: &mut Position) {
 
 pub fn position_from_fen(fen: &str) -> Position {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
     position
         .load_fen(fen)
         .expect(&format!("Failed to load FEN: {}", fen));

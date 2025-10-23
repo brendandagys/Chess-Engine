@@ -1,43 +1,77 @@
-use chess_engine::constants::{MAX_DEPTH, MAX_SEARCH_DURATION_MS};
+use chess_engine::constants::{
+    DEFAULT_FIXED_TIME, DEFAULT_MOVETIME_MS, DEFAULT_PLAYER_INCREMENT_MS,
+    DEFAULT_PLAYER_TIME_REMAINING_MS, MAX_DEPTH,
+};
 use chess_engine::position::Position;
+use chess_engine::time::TimeManager;
 use chess_engine::types::{Piece, Side, Square};
-use chess_engine::utils::get_time;
 use chess_engine::zobrist_hash::initialize_zobrist_hash_tables;
 use std::io::{self, Write};
 
 struct ChessEngine {
     position: Position,
+    turn: u32, // 0 - white, 1 - black, 2 - white, etc.
     computer_side: Option<Side>,
-    fixed_time: bool,
-    fixed_depth: bool,
-    max_search_duration_ms: u32,
-    max_depth: u16,
     flip: bool,
-    turn: u32,
     display_disabled: bool,
+    // Depth
+    fixed_depth: bool,
+    max_depth: u16,
+    // Time
+    fixed_time: bool,
+    movetime: Option<u64>,
+    wtime: Option<u64>,
+    btime: Option<u64>,
+    winc: Option<u64>,
+    binc: Option<u64>,
 }
 
 impl ChessEngine {
     fn new() -> Self {
         initialize_zobrist_hash_tables();
-        let mut position = Position::new();
-        position.set_material_scores();
+
+        let fixed_time = DEFAULT_FIXED_TIME;
+        let movetime = fixed_time.then_some(DEFAULT_MOVETIME_MS);
+        let wtime = Some(DEFAULT_PLAYER_TIME_REMAINING_MS);
+        let btime = Some(DEFAULT_PLAYER_TIME_REMAINING_MS);
+        let winc = Some(DEFAULT_PLAYER_INCREMENT_MS);
+        let binc = Some(DEFAULT_PLAYER_INCREMENT_MS);
+
+        let time_manager = TimeManager::new(fixed_time, movetime, wtime, btime, winc, binc, true);
+
+        let mut position = Position::new(time_manager);
+        position.set_material_scores(); // TODO: Can this be called in Position::new()? Or is it also called elsewhere?
 
         Self {
             position,
-            computer_side: None,
-            fixed_time: false,
-            fixed_depth: false,
-            max_search_duration_ms: MAX_SEARCH_DURATION_MS,
-            max_depth: MAX_DEPTH,
-            flip: false,
             turn: 0,
+            computer_side: None,
+            flip: false,
             display_disabled: false,
+            // Depth
+            fixed_depth: false,
+            max_depth: MAX_DEPTH,
+            // Time
+            fixed_time,
+            movetime,
+            wtime,
+            btime,
+            winc,
+            binc,
         }
     }
 
     fn new_game(&mut self) {
-        self.position = Position::new();
+        let time_manager = TimeManager::new(
+            self.fixed_time,
+            self.movetime,
+            self.wtime,
+            self.btime,
+            self.winc,
+            self.binc,
+            true,
+        );
+        self.position = Position::new(time_manager);
         self.position
             .generate_moves_and_captures(self.position.side);
     }
@@ -222,9 +256,9 @@ impl ChessEngine {
 
                 // Set search parameters
                 self.position.max_depth = self.max_depth;
-                self.position.max_search_duration_ms = self.max_search_duration_ms;
-                self.position.fixed_time = self.fixed_time;
                 self.position.fixed_depth = self.fixed_depth;
+
+                self.position.time_manager = TimeManager::from(&*self);
 
                 self.position.think();
 
@@ -245,16 +279,21 @@ impl ChessEngine {
                 self.position.make_move(hash_from, hash_to);
                 self.position.set_material_scores();
 
-                let elapsed_time = get_time() - self.position.start_time;
-                print!("\nTime: {} ms", elapsed_time);
+                let elapsed_ms = self.position.time_manager.elapsed().as_millis();
 
-                let nps = if elapsed_time > 0 {
-                    (self.position.nodes as f64 / elapsed_time as f64) * 1000.0
-                } else {
-                    0.0
+                print!("\nTime: {} ms", elapsed_ms);
+
+                let nps = match elapsed_ms {
+                    0 => 0.0, // Avoid division by zero
+                    ms => (self.position.nodes as f64 / ms as f64) * 1000.0,
                 };
 
-                print!(" | Nodes/s: {}\n", nps as u64);
+                print!(" | Nodes/s: {}", nps as u64);
+
+                print!(
+                    " | Soft: {:?} - Hard: {:?}\n",
+                    self.position.time_manager.soft_limit, self.position.time_manager.hard_limit
+                );
 
                 println!(
                     "\nComputer plays: {}",
@@ -265,7 +304,9 @@ impl ChessEngine {
                 self.position.first_move[0] = 0;
                 self.position
                     .generate_moves_and_captures(self.position.side);
+
                 self.print_result();
+
                 self.turn += 1;
                 self.display_board();
                 continue;
@@ -400,28 +441,32 @@ impl ChessEngine {
             if command.starts_with("sd ") {
                 if let Ok(depth) = command[3..].parse::<u16>() {
                     self.max_depth = depth;
-                    self.max_search_duration_ms = MAX_SEARCH_DURATION_MS;
-                    // self.max_search_duration_ms = 1 << 25;
                     self.fixed_depth = true;
-                    println!("Search depth set to {}", depth);
+                    println!("\nSearch depth set to {}", depth);
                 }
                 continue;
             }
 
             if command.starts_with("st ") {
-                if let Ok(time) = command[3..].parse::<u32>() {
-                    self.max_search_duration_ms = time * 1000;
-                    self.max_depth = 64;
+                if let Ok(time) = command[3..].parse::<u64>() {
+                    let time_in_ms = time * 1000;
                     self.fixed_time = true;
-                    println!("Search time set to {} seconds", time);
+                    self.movetime = Some(time_in_ms);
+                    self.max_depth = 64;
+                    println!("\nSearch time set to {} seconds", time);
                 }
                 continue;
             }
 
             // PARSE "FROM" AND THEN "TO" SQUARE
+            if command.len() < 2 {
+                println!("\nINVALID COMMAND!");
+                continue;
+            }
+
             let from_square = self.parse_square(command[..2].trim());
             if from_square.is_none() {
-                println!("\nInvalid from square");
+                println!("\nINVALID FROM SQUARE!");
                 continue;
             }
             let from_square = from_square.unwrap();
@@ -450,14 +495,14 @@ impl ChessEngine {
                     to_input = cleaned_command[2..].to_string();
                 }
                 _ => {
-                    println!("\nInvalid command format");
+                    println!("\nINVALID COMMAND!");
                     continue;
                 }
             }
 
             let to_square = self.parse_square(to_input.trim());
             if to_square.is_none() {
-                println!("\nInvalid to square");
+                println!("\nINVALID TO SQUARE!");
                 continue;
             }
             let to_square = to_square.unwrap();
@@ -477,7 +522,7 @@ impl ChessEngine {
                         .position
                         .make_move_with_promotion(mv.from, mv.to, mv.promote)
                     {
-                        println!("ILLEGAL MOVE");
+                        println!("ILLEGAL MOVE!");
                         continue;
                     }
 
@@ -493,7 +538,7 @@ impl ChessEngine {
                     panic!("Move found in move list, but is `None`");
                 }
             } else {
-                println!("ILLEGAL MOVE");
+                println!("ILLEGAL MOVE!");
             }
         }
     }
@@ -557,6 +602,22 @@ impl ChessEngine {
         };
 
         self.computer_side = Some(player_side.opponent());
+    }
+}
+
+impl From<&ChessEngine> for TimeManager {
+    fn from(engine: &ChessEngine) -> Self {
+        let is_white_turn = engine.turn % 2 == 0;
+
+        TimeManager::new(
+            engine.fixed_time,
+            engine.movetime,
+            engine.wtime,
+            engine.btime,
+            engine.winc,
+            engine.binc,
+            is_white_turn,
+        )
     }
 }
 

@@ -22,9 +22,7 @@ use test_utils::*;
 fn search_position(fen: &str, depth: u16) -> Option<(Square, Square)> {
     let mut position = position_from_fen(fen);
     position.max_depth = depth;
-    position.max_search_duration_ms = 1 << 25; // Very large time limit
     position.fixed_depth = true;
-    position.fixed_time = false;
 
     position.think();
 
@@ -51,7 +49,6 @@ mod basic_search {
         let mut position = position_from_fen(fen);
         position.max_depth = 3;
         position.fixed_depth = true;
-        position.fixed_time = false;
 
         position.think();
 

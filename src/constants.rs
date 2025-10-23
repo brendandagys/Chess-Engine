@@ -12,8 +12,13 @@ pub const MAX_DEPTH: u16 = 5;
 /// Hard limit for maximum search depth (in ply). Used to size arrays with per-ply information.
 pub const MAX_PLY: usize = 64;
 
-/// Maximum time (in milliseconds) for a search.
-pub const MAX_SEARCH_DURATION_MS: u32 = 5000;
+// Time
+pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 300_000; // 5 minutes
+pub const DEFAULT_PLAYER_INCREMENT_MS: u64 = 0;
+pub const DEFAULT_FIXED_TIME: bool = false;
+pub const DEFAULT_MOVETIME_MS: u64 = 1000; // Value for fixed-time mode
+
+pub const SOFT_TO_HARD_LIMIT_RATIO: f64 = 0.75; // Hard limit is 1/30 of time remaining, plus increment
 
 /// Maximum size for total moves in the move list.
 /// With 40 moves/position on average, allows for 50-ply depth.

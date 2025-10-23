@@ -2,6 +2,7 @@ mod test_utils;
 
 use chess_engine::{
     position::Position,
+    time::TimeManager,
     types::{Piece, Side, Square},
 };
 use test_utils::*;
@@ -9,7 +10,7 @@ use test_utils::*;
 #[test]
 fn test_load_starting_position_from_fen() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Load the standard starting position
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
@@ -44,7 +45,7 @@ fn test_load_starting_position_from_fen() {
 #[test]
 fn test_load_custom_position_from_fen() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Load a position with a specific setup (Scandinavian Defense after 1.e4 d5)
     let result = position.load_fen("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2");
@@ -75,7 +76,7 @@ fn test_load_custom_position_from_fen() {
 #[test]
 fn test_load_position_with_black_to_move() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Load a position with black to move
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
@@ -89,7 +90,7 @@ fn test_load_position_with_black_to_move() {
 #[test]
 fn test_load_position_with_limited_castling() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Position where only white can castle kingside and black can castle queenside
     let result = position.load_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Kq - 0 1");
@@ -105,7 +106,7 @@ fn test_load_position_with_limited_castling() {
 #[test]
 fn test_load_position_with_no_castling() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Position with no castling rights
     let result = position.load_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1");
@@ -118,7 +119,7 @@ fn test_load_position_with_no_castling() {
 #[test]
 fn test_halfmove_clock_parsing() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Position with halfmove clock = 5
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 1");
@@ -131,7 +132,7 @@ fn test_halfmove_clock_parsing() {
 #[test]
 fn test_fullmove_number_parsing_white_to_move() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Position at move 10, white to move
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 10");
@@ -148,7 +149,7 @@ fn test_fullmove_number_parsing_white_to_move() {
 #[test]
 fn test_fullmove_number_parsing_black_to_move() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Position at move 10, black to move
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 10");
@@ -165,7 +166,7 @@ fn test_fullmove_number_parsing_black_to_move() {
 #[test]
 fn test_default_values_when_fields_missing() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Minimal FEN (only first 3 fields)
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq");
@@ -185,7 +186,7 @@ fn test_default_values_when_fields_missing() {
 #[test]
 fn test_en_passant_validation_white() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Valid en passant square for white (rank 6)
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1");
@@ -205,7 +206,7 @@ fn test_en_passant_validation_white() {
 #[test]
 fn test_en_passant_validation_black() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Valid en passant square for black (rank 3)
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
@@ -225,7 +226,7 @@ fn test_en_passant_validation_black() {
 #[test]
 fn test_complete_fen_with_all_fields() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Complete FEN with all 6 fields
     let result =
@@ -255,7 +256,7 @@ fn test_complete_fen_with_all_fields() {
 #[test]
 fn test_invalid_halfmove_clock() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Invalid halfmove clock (not a number)
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - abc 1");
@@ -268,7 +269,7 @@ fn test_invalid_halfmove_clock() {
 #[test]
 fn test_invalid_fullmove_number() {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     // Invalid fullmove number (not a number)
     let result = position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 xyz");

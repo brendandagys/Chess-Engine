@@ -17,6 +17,7 @@ mod test_utils;
 
 use chess_engine::{
     position::Position,
+    time::TimeManager,
     types::{Board, Piece, Side, Square},
 };
 use test_utils::*;
@@ -24,7 +25,7 @@ use test_utils::*;
 /// Creates a position with only kings (required for valid chess positions)
 fn position_with_kings(side_to_move: Side) -> Position {
     ensure_zobrist_initialized();
-    let mut position = Position::new();
+    let mut position = Position::new(TimeManager::default());
 
     position.board = Board::empty();
     position
@@ -54,7 +55,7 @@ mod material_evaluation {
 
     #[test]
     fn test_equal_material_is_roughly_equal() {
-        let position = Position::new();
+        let position = Position::new(TimeManager::default());
         let score = evaluate(&position);
 
         // Starting position should be roughly equal (within positional differences)
