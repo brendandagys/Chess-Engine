@@ -34,7 +34,6 @@ pub struct Position {
     pub max_depth: u16, // Soft limit for search depth (in ply)
     pub fixed_depth: bool,
     pub time_manager: TimeManager,
-    stop_search: bool,
     // STATIC
     pub side: Side,
     pub other_side: Side,
@@ -2061,7 +2060,7 @@ impl Position {
 
     fn check_if_time_is_exhausted(&mut self) {
         if !self.fixed_depth && self.time_manager.is_hard_limit_reached() {
-            self.stop_search = true;
+            self.time_manager.stopped = true;
             // TODO: Remove panic
             panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
         }
@@ -2222,6 +2221,18 @@ impl Position {
     /// Launch the search using iterative deepening.
     /// Searches progressively deeper until maximum depth is reached or time runs out.
     pub fn think(&mut self) {
+        // Handle panics from the hard time check
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
+                if *msg == "TimeExhausted" {
+                    return;
+                }
+            }
+
+            default_hook(panic_info);
+        }));
+
         // Initialize search state
         self.ply = 0;
         self.nodes = 0;
@@ -2345,7 +2356,6 @@ impl Position {
             max_depth: 0,
             fixed_depth: false,
             time_manager,
-            stop_search: false,
             // Static
             side: Side::White,
             other_side: Side::Black,
