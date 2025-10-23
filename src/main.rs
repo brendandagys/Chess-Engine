@@ -309,6 +309,7 @@ impl ChessEngine {
 
                 self.turn += 1;
                 self.display_board();
+
                 continue;
             }
 
@@ -381,7 +382,7 @@ impl ChessEngine {
                 "new" => {
                     self.new_game();
                     self.computer_side = None;
-                    self.turn = 1;
+                    self.turn = 0;
                     self.display_board();
                     continue;
                 }

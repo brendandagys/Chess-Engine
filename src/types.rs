@@ -228,7 +228,6 @@ impl TryFrom<u8> for Side {
             return Err("Side index out of range (must be 0-1)");
         }
 
-        // SAFETY: We've verified value is in range 0-1, which matches our enum variants
         Ok(unsafe { std::mem::transmute(value) })
     }
 }
