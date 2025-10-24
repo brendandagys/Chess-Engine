@@ -38,7 +38,7 @@ impl CLI {
         println!("undo      - Takes back the last move");
         println!("===================== CONFIGURATION ======================");
         println!("fen <FEN> - Loads a FEN string");
-        println!("sd        - Sets the search depth");
+        println!("sd        - Sets the maximum search depth");
         println!("st        - Sets the time limit per move in seconds");
     }
 
@@ -291,7 +291,7 @@ impl CLI {
             if command.starts_with("sd ") {
                 if let Ok(depth) = command[3..].parse::<u16>() {
                     self.engine.search_settings.depth = depth;
-                    println!("\nSearch depth set to {}", depth);
+                    println!("\nSearch maximum search depth set to {}", depth);
                 }
                 continue;
             }
