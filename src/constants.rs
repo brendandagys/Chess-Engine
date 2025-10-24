@@ -7,7 +7,7 @@ pub const NUM_RANKS: usize = 8;
 pub const NUM_FILES: usize = 8;
 
 /// Maximum search depth (in full moves). Used to size arrays with per-depth information.
-pub const MAX_DEPTH: u16 = 5;
+pub const DEFAULT_MAX_DEPTH: u16 = 5;
 
 /// Hard limit for maximum search depth (in ply). Used to size arrays with per-ply information.
 pub const MAX_PLY: usize = 64;

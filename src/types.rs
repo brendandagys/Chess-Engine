@@ -218,6 +218,16 @@ pub enum Side {
     Black = 1,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GameResult {
+    InProgress,
+    Checkmate(Side), // Winner
+    Stalemate,
+    DrawByRepetition,
+    DrawByFiftyMoveRule,
+    DrawByInsufficientMaterial,
+}
+
 impl Side {
     pub fn iter() -> impl Iterator<Item = Side> {
         [Side::White, Side::Black].into_iter()

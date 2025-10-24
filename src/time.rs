@@ -1,8 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::constants::{
-    DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS, SOFT_TO_HARD_LIMIT_RATIO,
-};
+use crate::constants::{DEFAULT_PLAYER_TIME_REMAINING_MS, SOFT_TO_HARD_LIMIT_RATIO};
 
 #[derive(Debug, Clone, Copy)]
 pub struct TimeManager {
@@ -29,28 +27,21 @@ impl Default for TimeManager {
 impl TimeManager {
     /// Create a new TimeManager for each search
     pub fn new(
-        fixed_time: bool,
+        wtime: u64,            // Remaining white time (ms)
+        btime: u64,            // Remaining black time (ms)
+        winc: u64,             // White increment (ms)
+        binc: u64,             // Black increment (ms)
         movetime: Option<u64>, // Explicit per-move time in ms
-        wtime: Option<u64>,    // Remaining white time (ms)
-        btime: Option<u64>,    // Remaining black time (ms)
-        winc: Option<u64>,     // White increment (ms)
-        binc: Option<u64>,     // Black increment (ms)
         is_white_turn: bool,
     ) -> Self {
         let start_time = Instant::now();
 
-        let max_search_duration_ms = match fixed_time {
-            true => movetime.unwrap_or(1000),
-            false => {
+        let max_search_duration_ms = match movetime {
+            Some(movetime) => movetime,
+            None => {
                 let (time_left, increment) = match is_white_turn {
-                    true => (
-                        wtime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS),
-                        winc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS),
-                    ),
-                    false => (
-                        btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS),
-                        binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS),
-                    ),
+                    true => (wtime, winc),
+                    false => (btime, binc),
                 };
 
                 // Use 1/30 of remaining time + increment, but never more than 25% of total
@@ -58,9 +49,9 @@ impl TimeManager {
             }
         };
 
-        let (soft_limit_ms, hard_limit_ms) = match fixed_time {
-            true => (max_search_duration_ms, max_search_duration_ms),
-            false => {
+        let (soft_limit_ms, hard_limit_ms) = match movetime {
+            Some(movetime) => (movetime, movetime),
+            None => {
                 // e.g. Stop starting new depths at 75% of the budget
                 let soft = (max_search_duration_ms as f64 * SOFT_TO_HARD_LIMIT_RATIO) as u64;
                 (soft, max_search_duration_ms)
@@ -71,9 +62,14 @@ impl TimeManager {
             start_time,
             soft_limit: Duration::from_millis(soft_limit_ms),
             hard_limit: Duration::from_millis(hard_limit_ms),
-            fixed_time,
+            fixed_time: movetime.is_some(),
             stopped: false,
         }
+    }
+
+    pub fn reset_for_next_move(&mut self) {
+        self.start_time = Instant::now();
+        self.stopped = false;
     }
 
     /// Time since search began

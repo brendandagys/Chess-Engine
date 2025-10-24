@@ -1,79 +1,24 @@
-use chess_engine::constants::{
-    DEFAULT_FIXED_TIME, DEFAULT_MOVETIME_MS, DEFAULT_PLAYER_INCREMENT_MS,
-    DEFAULT_PLAYER_TIME_REMAINING_MS, MAX_DEPTH,
-};
+use chess_engine::engine::Engine;
 use chess_engine::position::Position;
-use chess_engine::time::TimeManager;
-use chess_engine::types::{Piece, Side, Square};
-use chess_engine::zobrist_hash::initialize_zobrist_hash_tables;
+use chess_engine::types::{GameResult, Side};
+use rand::Rng;
 use std::io::{self, Write};
 
-struct ChessEngine {
-    position: Position,
-    turn: u32, // 0 - white, 1 - black, 2 - white, etc.
-    computer_side: Option<Side>,
+struct CLI {
+    engine: Engine,
     flip: bool,
-    display_disabled: bool,
-    // Depth
-    fixed_depth: bool,
-    max_depth: u16,
-    // Time
-    fixed_time: bool,
-    movetime: Option<u64>,
-    wtime: Option<u64>,
-    btime: Option<u64>,
-    winc: Option<u64>,
-    binc: Option<u64>,
+    display_enabled: bool,
 }
 
-impl ChessEngine {
+impl CLI {
     fn new() -> Self {
-        initialize_zobrist_hash_tables();
-
-        let fixed_time = DEFAULT_FIXED_TIME;
-        let movetime = fixed_time.then_some(DEFAULT_MOVETIME_MS);
-        let wtime = Some(DEFAULT_PLAYER_TIME_REMAINING_MS);
-        let btime = Some(DEFAULT_PLAYER_TIME_REMAINING_MS);
-        let winc = Some(DEFAULT_PLAYER_INCREMENT_MS);
-        let binc = Some(DEFAULT_PLAYER_INCREMENT_MS);
-
-        let time_manager = TimeManager::new(fixed_time, movetime, wtime, btime, winc, binc, true);
-
-        let mut position = Position::new(time_manager);
-        position.set_material_scores(); // TODO: Can this be called in Position::new()? Or is it also called elsewhere?
+        let engine = Engine::default();
 
         Self {
-            position,
-            turn: 0,
-            computer_side: None,
+            engine,
             flip: false,
-            display_disabled: false,
-            // Depth
-            fixed_depth: false,
-            max_depth: MAX_DEPTH,
-            // Time
-            fixed_time,
-            movetime,
-            wtime,
-            btime,
-            winc,
-            binc,
+            display_enabled: true,
         }
-    }
-
-    fn new_game(&mut self) {
-        let time_manager = TimeManager::new(
-            self.fixed_time,
-            self.movetime,
-            self.wtime,
-            self.btime,
-            self.winc,
-            self.binc,
-            true,
-        );
-        self.position = Position::new(time_manager);
-        self.position
-            .generate_moves_and_captures(self.position.side);
     }
 
     fn show_help(&self) {
@@ -98,142 +43,49 @@ impl ChessEngine {
     }
 
     fn display_board(&self) {
-        if self.display_disabled {
-            return;
+        if self.display_enabled {
+            self.engine.position.display_board(self.flip);
         }
-
-        self.position.display_board(self.flip);
-    }
-
-    /// Parse a move in long algebraic notation (e.g., e2e4)
-    /// and return the index in the move list.
-    fn parse_move_string(&self, move_str: &str) -> Option<usize> {
-        if move_str.len() < 4 {
-            return None;
-        }
-
-        let chars: Vec<char> = move_str.chars().collect();
-
-        if chars[0] < 'a'
-            || chars[0] > 'h'
-            || chars[1] < '1'
-            || chars[1] > '8'
-            || chars[2] < 'a'
-            || chars[2] > 'h'
-            || chars[3] < '1'
-            || chars[3] > '8'
-        {
-            return None;
-        }
-
-        let from_file = (chars[0] as u8 - b'a') as usize;
-        let from_rank = (chars[1] as u8 - b'1') as usize;
-        let to_file = (chars[2] as u8 - b'a') as usize;
-        let to_rank = (chars[3] as u8 - b'1') as usize;
-
-        let from_square = from_rank * 8 + from_file;
-        let to_square = to_rank * 8 + to_file;
-
-        // Find matching move in move list
-        for i in 0..self.position.first_move[1] as usize {
-            if let Some(mv) = self.position.move_list[i] {
-                if mv.from as usize == from_square && mv.to as usize == to_square {
-                    return Some(i);
-                }
-            }
-        }
-
-        None
-    }
-
-    fn move_string(from: Square, to: Square, promote: Option<Piece>) -> String {
-        let from_file = (from as usize % 8) as u8 + b'a';
-        let from_rank = (from as usize / 8) as u8 + b'1';
-        let to_file = (to as usize % 8) as u8 + b'a';
-        let to_rank = (to as usize / 8) as u8 + b'1';
-
-        let mut result = format!(
-            "\x1b[32m{}{} -> {}{}\x1b[0m",
-            from_file as char, from_rank as char, to_file as char, to_rank as char
-        );
-
-        if let Some(piece) = promote {
-            let promote_char = match piece {
-                Piece::Knight => 'n',
-                Piece::Bishop => 'b',
-                Piece::Rook => 'r',
-                _ => 'q',
-            };
-            result.push(promote_char);
-        }
-
-        result
     }
 
     fn print_result(&mut self) {
-        self.position.set_material_scores();
-        self.position
-            .generate_moves_and_captures(self.position.side);
+        self.engine.position.set_material_scores();
 
-        let mut has_legal_moves = false;
-        for i in 0..self.position.first_move[1] as usize {
-            if let Some(mv) = self.position.move_list[i] {
-                if self
+        let result = self.engine.position.check_game_result();
+
+        match result {
+            GameResult::InProgress => {}
+            GameResult::Checkmate(winner) => {
+                self.engine
                     .position
-                    .make_move_with_promotion(mv.from, mv.to, mv.promote)
-                {
-                    self.position.take_back_move();
-                    has_legal_moves = true;
-                    break;
-                }
-            }
-        }
+                    .generate_moves_and_captures(self.engine.position.side);
+                self.display_board();
+                println!("\nGAME OVER");
 
-        // Check for stalemate with insufficient material
-        if self.position.pawn_engine_score[0] == 0
-            && self.position.pawn_engine_score[1] == 0
-            && self.position.piece_engine_score[0] <= 300 // TODO: Isn't a king worth way more?? Test.
-            && self.position.piece_engine_score[1] <= 300
-        {
-            println!("{{Stalemate}}");
-            self.new_game();
-            self.computer_side = None;
-            return;
-        }
-
-        if !has_legal_moves {
-            self.position
-                .generate_moves_and_captures(self.position.side);
-            self.display_board();
-            println!("\nGAME OVER ");
-
-            let king_square = self.position.board.bit_pieces[self.position.side as usize]
-                [Piece::King as usize]
-                .next_bit();
-
-            if self.position.is_square_attacked_by_side(
-                self.position.side.opponent(),
-                Square::try_from(king_square).unwrap(),
-            ) {
-                if self.position.side == Side::White {
-                    println!("{{Black mates}}");
-                } else {
+                if winner == Side::White {
                     println!("{{White mates}}");
+                } else {
+                    println!("{{Black mates}}");
                 }
-            } else {
-                println!("{{Stalemate}}");
-            }
 
-            self.new_game();
-            self.computer_side = None;
-        } else if self.position.reps() >= 3 {
-            println!("{{Draw by repetition}}");
-            self.new_game();
-            self.computer_side = None;
-        } else if self.position.fifty >= 100 {
-            println!("{{Draw by fifty move rule}}");
-            self.new_game();
-            self.computer_side = None;
+                self.engine.new_game();
+            }
+            GameResult::Stalemate => {
+                println!("{{Stalemate}}");
+                self.engine.new_game();
+            }
+            GameResult::DrawByRepetition => {
+                println!("{{Draw by repetition}}");
+                self.engine.new_game();
+            }
+            GameResult::DrawByFiftyMoveRule => {
+                println!("{{Draw by fifty move rule}}");
+                self.engine.new_game();
+            }
+            GameResult::DrawByInsufficientMaterial => {
+                println!("{{Stalemate}}");
+                self.engine.new_game();
+            }
         }
     }
 
@@ -245,79 +97,75 @@ impl ChessEngine {
             println!("\n-------------------------------");
             println!(
                 "*   Ply: {} | To move: {:?}   *",
-                self.position.ply_from_start_of_game + 1,
-                self.position.side
+                self.engine.position.ply_from_start_of_game + 1,
+                self.engine.position.side
             );
             println!("-------------------------------");
 
             // Computer's turn
-            if Some(self.position.side) == self.computer_side {
+            if Some(self.engine.position.side) == self.engine.computer_side {
                 println!("\nComputer is thinking...");
-
-                // Set search parameters
-                self.position.max_depth = self.max_depth;
-                self.position.fixed_depth = self.fixed_depth;
-
-                self.position.time_manager = TimeManager::from(&*self);
-
-                self.position.think();
+                self.engine.think();
 
                 let (hash_from, hash_to) = if let (Some(from), Some(to)) =
-                    (self.position.hash_from, self.position.hash_to)
+                    (self.engine.position.hash_from, self.engine.position.hash_to)
                 {
                     (from, to)
                 } else {
                     // TODO: What is the purpose of this branch?
                     println!("(No legal moves)");
-                    self.computer_side = None;
+                    self.engine.computer_side = None;
                     self.display_board();
-                    self.position
-                        .generate_moves_and_captures(self.position.side);
+                    self.engine
+                        .position
+                        .generate_moves_and_captures(self.engine.position.side);
                     continue;
                 };
 
-                self.position.make_move(hash_from, hash_to);
-                self.position.set_material_scores();
+                self.engine.position.make_move(hash_from, hash_to);
+                self.engine.position.set_material_scores();
 
-                let elapsed_ms = self.position.time_manager.elapsed().as_millis();
+                let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
 
                 print!("\nTime: {} ms", elapsed_ms);
 
                 let nps = match elapsed_ms {
                     0 => 0.0, // Avoid division by zero
-                    ms => (self.position.nodes as f64 / ms as f64) * 1000.0,
+                    ms => (self.engine.position.nodes as f64 / ms as f64) * 1000.0,
                 };
 
                 print!(" | Nodes/s: {}", nps as u64);
 
                 print!(
                     " | Soft: {:?} - Hard: {:?}\n",
-                    self.position.time_manager.soft_limit, self.position.time_manager.hard_limit
+                    self.engine.position.time_manager.soft_limit,
+                    self.engine.position.time_manager.hard_limit
                 );
 
                 println!(
-                    "\nComputer plays: {}",
-                    Self::move_string(hash_from, hash_to, None)
+                    "\nComputer plays: \x1b[32m{}\x1b[0m",
+                    Engine::move_string(hash_from, hash_to, None)
                 );
 
-                self.position.ply = 0;
-                self.position.first_move[0] = 0;
-                self.position
-                    .generate_moves_and_captures(self.position.side);
+                self.engine.position.ply = 0;
+                self.engine.position.first_move[0] = 0;
+                self.engine
+                    .position
+                    .generate_moves_and_captures(self.engine.position.side);
 
                 self.print_result();
 
-                self.turn += 1;
                 self.display_board();
 
                 continue;
             }
 
             // Show available moves
-            self.position.ply = 0;
-            self.position.first_move[0] = 0;
-            self.position
-                .generate_moves_and_captures(self.position.side);
+            self.engine.position.ply = 0;
+            self.engine.position.first_move[0] = 0;
+            self.engine
+                .position
+                .generate_moves_and_captures(self.engine.position.side);
 
             print!("\nFrom square OR command > ");
             io::stdout().flush().unwrap();
@@ -334,17 +182,17 @@ impl ChessEngine {
             // COMMANDS WITHOUT PARAMETERS
             match command {
                 "d" => {
-                    self.position.display_board(self.flip);
+                    self.engine.position.display_board(self.flip);
                     continue;
                 }
                 "D" => {
-                    self.display_disabled = !self.display_disabled;
+                    self.display_enabled = !self.display_enabled;
 
-                    if self.display_disabled {
-                        println!("\nBoard display disabled");
-                    } else {
+                    if self.display_enabled {
                         println!("\nBoard display enabled");
                         self.display_board();
+                    } else {
+                        println!("\nBoard display disabled");
                     }
                     continue;
                 }
@@ -362,15 +210,15 @@ impl ChessEngine {
                     continue;
                 }
                 "fen" => {
-                    println!("\n{}", self.position.to_fen());
+                    println!("\n{}", self.engine.position.to_fen());
                     continue;
                 }
                 "moves" => {
                     println!("\nLegal moves:");
-                    let move_count = self.position.first_move[1];
+                    let move_count = self.engine.position.first_move[1];
                     for i in 0..move_count as usize {
-                        if let Some(mv) = self.position.move_list[i] {
-                            print!("{} ", Self::move_string(mv.from, mv.to, mv.promote));
+                        if let Some(mv) = self.engine.position.move_list[i] {
+                            print!("{} ", Engine::move_string(mv.from, mv.to, mv.promote));
                             if (i + 1) % 8 == 0 {
                                 println!();
                             }
@@ -380,18 +228,16 @@ impl ChessEngine {
                     continue;
                 }
                 "new" => {
-                    self.new_game();
-                    self.computer_side = None;
-                    self.turn = 0;
+                    self.engine.new_game();
                     self.display_board();
                     continue;
                 }
                 "p" | "play" => {
-                    self.computer_side = Some(self.position.side);
+                    self.engine.computer_side = Some(self.engine.position.side);
                     continue;
                 }
                 "off" => {
-                    self.computer_side = None;
+                    self.engine.computer_side = None;
                     continue;
                 }
                 "q" | "Q" | "quit" => {
@@ -399,24 +245,26 @@ impl ChessEngine {
                     break;
                 }
                 "switch" => {
-                    self.position.side = self.position.side.opponent();
-                    self.position.other_side = self.position.other_side.opponent();
-                    self.position
-                        .generate_moves_and_captures(self.position.side);
+                    self.engine.position.side = self.engine.position.side.opponent();
+                    self.engine.position.other_side = self.engine.position.other_side.opponent();
+                    self.engine
+                        .position
+                        .generate_moves_and_captures(self.engine.position.side);
                     continue;
                 }
                 "undo" => {
                     // TODO: Can this be improved? Should set material scores? Why is ply set to 0?
-                    if self.position.ply_from_start_of_game == 0 {
+                    if self.engine.position.ply_from_start_of_game == 0 {
                         println!("\nNo moves to undo");
                         continue;
                     }
-                    self.computer_side = None;
-                    self.position.take_back_move();
-                    self.position.ply = 0;
-                    self.position.first_move[0] = 0;
-                    self.position
-                        .generate_moves_and_captures(self.position.side);
+                    self.engine.computer_side = None;
+                    self.engine.position.take_back_move();
+                    self.engine.position.ply = 0;
+                    self.engine.position.first_move[0] = 0;
+                    self.engine
+                        .position
+                        .generate_moves_and_captures(self.engine.position.side);
                     self.display_board();
                     continue;
                 }
@@ -426,11 +274,12 @@ impl ChessEngine {
             // COMMANDS WITH PARAMETERS
             if command.starts_with("fen ") {
                 let fen_str = &command[4..];
-                match self.position.load_fen(fen_str) {
+                match self.engine.position.load_fen(fen_str) {
                     Ok(_) => {
-                        self.position.set_material_scores();
-                        self.position
-                            .generate_moves_and_captures(self.position.side);
+                        self.engine.position.set_material_scores();
+                        self.engine
+                            .position
+                            .generate_moves_and_captures(self.engine.position.side);
                         self.display_board();
                         println!("FEN loaded successfully");
                     }
@@ -441,8 +290,7 @@ impl ChessEngine {
 
             if command.starts_with("sd ") {
                 if let Ok(depth) = command[3..].parse::<u16>() {
-                    self.max_depth = depth;
-                    self.fixed_depth = true;
+                    self.engine.search_settings.depth = depth;
                     println!("\nSearch depth set to {}", depth);
                 }
                 continue;
@@ -451,9 +299,7 @@ impl ChessEngine {
             if command.starts_with("st ") {
                 if let Ok(time) = command[3..].parse::<u64>() {
                     let time_in_ms = time * 1000;
-                    self.fixed_time = true;
-                    self.movetime = Some(time_in_ms);
-                    self.max_depth = 64;
+                    self.engine.search_settings.movetime = Some(time_in_ms);
                     println!("\nSearch time set to {} seconds", time);
                 }
                 continue;
@@ -465,7 +311,7 @@ impl ChessEngine {
                 continue;
             }
 
-            let from_square = self.parse_square(command[..2].trim());
+            let from_square = Position::parse_square(command[..2].trim());
             if from_square.is_none() {
                 println!("\nINVALID FROM SQUARE!");
                 continue;
@@ -501,7 +347,7 @@ impl ChessEngine {
                 }
             }
 
-            let to_square = self.parse_square(to_input.trim());
+            let to_square = Position::parse_square(to_input.trim());
             if to_square.is_none() {
                 println!("\nINVALID TO SQUARE!");
                 continue;
@@ -517,9 +363,10 @@ impl ChessEngine {
                 ((to_square / 8) as u8 + b'1') as char
             );
 
-            if let Some(move_idx) = self.parse_move_string(&move_str) {
-                if let Some(mv) = self.position.move_list[move_idx] {
+            if let Some(move_idx) = self.engine.parse_move_string(&move_str) {
+                if let Some(mv) = self.engine.position.move_list[move_idx] {
                     if !self
+                        .engine
                         .position
                         .make_move_with_promotion(mv.from, mv.to, mv.promote)
                     {
@@ -527,13 +374,13 @@ impl ChessEngine {
                         continue;
                     }
 
-                    self.position.set_material_scores();
-                    self.position.ply = 0;
-                    self.position.first_move[0] = 0;
-                    self.position
-                        .generate_moves_and_captures(self.position.side);
+                    self.engine.position.set_material_scores();
+                    self.engine.position.ply = 0;
+                    self.engine.position.first_move[0] = 0;
+                    self.engine
+                        .position
+                        .generate_moves_and_captures(self.engine.position.side);
                     self.print_result();
-                    self.turn += 1;
                     self.display_board();
                 } else {
                     panic!("Move found in move list, but is `None`");
@@ -542,23 +389,6 @@ impl ChessEngine {
                 println!("ILLEGAL MOVE!");
             }
         }
-    }
-
-    fn parse_square(&self, input: &str) -> Option<usize> {
-        if input.len() != 2 {
-            return None;
-        }
-
-        let chars: Vec<char> = input.chars().collect();
-
-        if chars[0] < 'a' || chars[0] > 'h' || chars[1] < '1' || chars[1] > '8' {
-            return None;
-        }
-
-        let file = (chars[0] as u8 - b'a') as usize;
-        let rank = (chars[1] as u8 - b'1') as usize;
-
-        Some(rank * 8 + file)
     }
 
     fn handle_go_command(&mut self) {
@@ -583,18 +413,12 @@ impl ChessEngine {
             "1" => Side::White,
             "2" => Side::Black,
             "3" => {
-                use std::time::SystemTime;
-                let now = SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                if now % 2 == 0 {
-                    println!("You are playing as white");
-                    Side::White
-                } else {
-                    println!("You are playing as black");
-                    Side::Black
-                }
+                let side = match rand::thread_rng().gen_bool(0.5) {
+                    true => Side::White,
+                    false => Side::Black,
+                };
+                println!("You are playing as {:?}", side);
+                side
             }
             _ => {
                 println!("Invalid choice. Defaulting to White.");
@@ -602,23 +426,7 @@ impl ChessEngine {
             }
         };
 
-        self.computer_side = Some(player_side.opponent());
-    }
-}
-
-impl From<&ChessEngine> for TimeManager {
-    fn from(engine: &ChessEngine) -> Self {
-        let is_white_turn = engine.turn % 2 == 0;
-
-        TimeManager::new(
-            engine.fixed_time,
-            engine.movetime,
-            engine.wtime,
-            engine.btime,
-            engine.winc,
-            engine.binc,
-            is_white_turn,
-        )
+        self.engine.computer_side = Some(player_side.opponent());
     }
 }
 
@@ -629,7 +437,7 @@ fn main() {
     println!("\"h or help\" displays a list of commands");
     println!();
 
-    let mut engine = ChessEngine::new();
-    engine.show_help();
-    engine.run_main_loop();
+    let mut cli = CLI::new();
+    cli.show_help();
+    cli.run_main_loop();
 }

@@ -1,0 +1,259 @@
+use std::panic;
+
+use crate::{
+    constants::{DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS},
+    position::Position,
+    time::TimeManager,
+    types::{Piece, Side, Square},
+    zobrist_hash::initialize_zobrist_hash_tables,
+};
+
+pub struct Engine {
+    pub position: Position,
+    pub search_settings: SearchSettings,
+    pub computer_side: Option<Side>,
+}
+
+pub struct SearchSettings {
+    pub wtime: u64,
+    pub btime: u64,
+    pub winc: u64,
+    pub binc: u64,
+    pub movetime: Option<u64>,
+    pub depth: u16,
+}
+
+pub struct SearchResult {
+    pub best_move: String,
+    pub ponder_move: Option<String>,
+    pub evaluation: i32,
+    pub depth: u16,
+    pub nodes: u64,
+    pub pv: Vec<String>,
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Engine::new(None, None, None, None, None, None)
+    }
+}
+
+impl Engine {
+    pub fn new(
+        wtime: Option<u64>,
+        btime: Option<u64>,
+        winc: Option<u64>,
+        binc: Option<u64>,
+        movetime: Option<u64>,
+        depth: Option<u16>,
+    ) -> Self {
+        initialize_zobrist_hash_tables();
+
+        let wtime = wtime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
+        let btime = btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
+        let winc = winc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
+        let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
+        let depth = depth.unwrap_or(DEFAULT_MAX_DEPTH);
+
+        let time_manager = TimeManager::new(wtime, btime, winc, binc, movetime, true);
+        let mut position = Position::new(time_manager);
+        position.set_material_scores(); // TODO: Can this be called in Position::new()? Or is it also called elsewhere?
+
+        Engine {
+            position,
+            search_settings: SearchSettings {
+                wtime,
+                btime,
+                winc,
+                binc,
+                depth,
+                movetime,
+            },
+            computer_side: None,
+        }
+    }
+
+    pub fn new_game(&mut self) {
+        let time_manager = TimeManager::new(
+            self.search_settings.wtime,
+            self.search_settings.btime,
+            self.search_settings.winc,
+            self.search_settings.binc,
+            self.search_settings.movetime,
+            true,
+        );
+
+        self.computer_side = None;
+
+        self.position = Position::new(time_manager);
+
+        self.position.set_material_scores();
+        self.position
+            .generate_moves_and_captures(self.position.side);
+    }
+
+    /// Launch the search using iterative deepening.
+    /// Searches progressively deeper until maximum depth is reached or time runs out.
+    pub fn think(&mut self) {
+        // Handle panics from the hard time check
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
+                if *msg == "TimeExhausted" {
+                    return;
+                }
+            }
+
+            default_hook(panic_info);
+        }));
+
+        // Initialize search state
+        self.position.ply = 0;
+        self.position.nodes = 0;
+
+        self.position.set_material_scores();
+
+        self.position.time_manager = TimeManager::new(
+            self.search_settings.wtime,
+            self.search_settings.btime,
+            self.search_settings.winc,
+            self.search_settings.binc,
+            self.search_settings.movetime,
+            self.position.side == Side::White,
+        );
+
+        println!("\nPLY         NODES     SCORE      PV");
+
+        // Iterative deepening: search depth 1, 2, 3, ... up to the maximum
+        for depth in 1..=self.search_settings.depth {
+            // Soft time limit to avoid starting a depth that won't finish
+            if self.search_settings.depth > 1 && depth > 1 {
+                if self.position.time_manager.is_soft_limit_reached() {
+                    break;
+                }
+            }
+
+            self.position.ply = 0;
+            self.position.first_move[0] = 0;
+
+            // Perform the search at this depth
+            let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                self.position.search(-10000, 10000, depth)
+            })) {
+                Ok(score) => score,
+                Err(panic_payload) => {
+                    // Handle time exhaustion panic
+                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
+                        if *msg == "TimeExhausted" {
+                            // Ensure we've unwound all moves
+                            while self.position.ply > 0 {
+                                self.position.take_back_move();
+                            }
+                            break;
+                        }
+                    }
+                    // Re-throw any other panics
+                    panic::resume_unwind(panic_payload);
+                }
+            };
+
+            // Ensure ply is back to 0 after search
+            while self.position.ply > 0 {
+                self.position.take_back_move();
+            }
+
+            // Display search results
+            print!("{:>3}  {:>12}  {:>8}   ", depth, self.position.nodes, score);
+
+            // Display best move
+            if let (Some(from), Some(to)) =
+                (self.position.best_move_from, self.position.best_move_to)
+            {
+                print!(" ");
+                Position::display_move(from, to);
+            }
+
+            println!();
+            std::io::Write::flush(&mut std::io::stdout()).unwrap();
+
+            // Stop if we found a mate
+            if score > 9000 || score < -9000 {
+                break;
+            }
+        }
+
+        // Ensure position is clean after search
+        self.position.ply = 0;
+        self.position.first_move[0] = 0;
+
+        // Set hash_from and hash_to for retrieval by caller from best move
+        if let (Some(from), Some(to)) = (self.position.best_move_from, self.position.best_move_to) {
+            self.position.hash_from = Some(from);
+            self.position.hash_to = Some(to);
+        }
+    }
+
+    pub fn move_string(from: Square, to: Square, promote: Option<Piece>) -> String {
+        let from_file = (from as usize % 8) as u8 + b'a';
+        let from_rank = (from as usize / 8) as u8 + b'1';
+        let to_file = (to as usize % 8) as u8 + b'a';
+        let to_rank = (to as usize / 8) as u8 + b'1';
+
+        let mut result = format!(
+            "{}{} -> {}{}",
+            from_file as char, from_rank as char, to_file as char, to_rank as char
+        );
+
+        if let Some(piece) = promote {
+            let promote_char = match piece {
+                Piece::Knight => 'n',
+                Piece::Bishop => 'b',
+                Piece::Rook => 'r',
+                _ => 'q',
+            };
+            result.push(promote_char);
+        }
+
+        result
+    }
+
+    /// Parse a move in algebraic notation (e2e4) and return the index in the move list
+    pub fn parse_move_string(&self, move_str: &str) -> Option<usize> {
+        if move_str.len() < 4 {
+            return None;
+        }
+
+        let chars: Vec<char> = move_str.chars().collect();
+
+        if chars[0] < 'a'
+            || chars[0] > 'h'
+            || chars[1] < '1'
+            || chars[1] > '8'
+            || chars[2] < 'a'
+            || chars[2] > 'h'
+            || chars[3] < '1'
+            || chars[3] > '8'
+        {
+            return None;
+        }
+
+        let from_file = (chars[0] as u8 - b'a') as usize;
+        let from_rank = (chars[1] as u8 - b'1') as usize;
+        let to_file = (chars[2] as u8 - b'a') as usize;
+        let to_rank = (chars[3] as u8 - b'1') as usize;
+
+        let from_square = from_rank * 8 + from_file;
+        let to_square = to_rank * 8 + to_file;
+
+        // Find matching move in move list
+        for i in 0..self.position.first_move[1] as usize {
+            if let Some(mv) = self.position.move_list[i] {
+                if mv.from as usize == from_square && mv.to as usize == to_square {
+                    return Some(i);
+                }
+            }
+        }
+
+        None
+    }
+}

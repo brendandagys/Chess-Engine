@@ -4,6 +4,7 @@ use std::sync::Once;
 
 /// Shared test utilities for hash-related tests
 use chess_engine::{
+    engine::Engine,
     position::Position,
     time::TimeManager,
     types::{Move, Piece, Side, Square},
@@ -85,6 +86,19 @@ pub fn position_from_fen(fen: &str) -> Position {
     reset_move_state(&mut position);
     position.display_board(false);
     position
+}
+
+pub fn engine_from_fen(fen: &str, depth: u16) -> Engine {
+    ensure_zobrist_initialized();
+    let mut engine = Engine::new(None, None, None, None, None, Some(depth));
+    engine
+        .position
+        .load_fen(fen)
+        .expect(&format!("Failed to load FEN: {}", fen));
+    engine.position.set_material_scores();
+    reset_move_state(&mut engine.position);
+    engine.position.display_board(false);
+    engine
 }
 
 pub fn move_pairs(position: &Position) -> Vec<(Square, Square)> {

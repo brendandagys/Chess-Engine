@@ -1,5 +1,3 @@
-use std::panic;
-
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
@@ -27,13 +25,11 @@ pub struct Position {
     pub pawn_engine_score: [usize; NUM_SIDES],
     pub piece_engine_score: [usize; NUM_SIDES],
     pub material_score: [usize; NUM_SIDES],
-    pub castle: u8,                 // Castle permissions
-    best_move_from: Option<Square>, // Found from the search/hash
-    best_move_to: Option<Square>,   // Found from the search/hash
+    pub castle: u8,                     // Castle permissions
+    pub best_move_from: Option<Square>, // Found from the search/hash
+    pub best_move_to: Option<Square>,   // Found from the search/hash
     pub hash_from: Option<Square>,
     pub hash_to: Option<Square>,
-    pub max_depth: u16, // Soft limit for search depth (in ply)
-    pub fixed_depth: bool,
     pub time_manager: TimeManager,
     // STATIC
     pub side: Side,
@@ -717,7 +713,7 @@ impl Position {
         );
     }
 
-    fn display_move(from: Square, to: Square) {
+    pub fn display_move(from: Square, to: Square) {
         [from, to].iter().for_each(|&square| {
             print!(
                 "{}{}",
@@ -1557,6 +1553,68 @@ impl Position {
         count
     }
 
+    /// Checks the current game state and returns the result
+    pub fn check_game_result(&mut self) -> crate::types::GameResult {
+        use crate::types::GameResult;
+
+        if self.reps() >= 3 {
+            return GameResult::DrawByRepetition;
+        }
+
+        if self.fifty >= 100 {
+            return GameResult::DrawByFiftyMoveRule;
+        }
+
+        if self.pawn_engine_score[0] == 0
+            && self.pawn_engine_score[1] == 0
+            && self.piece_engine_score[0] <= 300
+            && self.piece_engine_score[1] <= 300
+        {
+            return GameResult::DrawByInsufficientMaterial;
+        }
+
+        // Generate moves to check if any legal moves exist
+        let saved_ply = self.ply;
+        let saved_first_move = self.first_move[0];
+
+        self.ply = 0;
+        self.first_move[0] = 0;
+        self.generate_moves_and_captures(self.side);
+
+        let mut has_legal_moves = false;
+        for i in 0..self.first_move[1] as usize {
+            if let Some(mv) = self.move_list[i] {
+                if self.make_move_with_promotion(mv.from, mv.to, mv.promote) {
+                    self.take_back_move();
+                    has_legal_moves = true;
+                    break;
+                }
+            }
+        }
+
+        // Restore state
+        self.ply = saved_ply;
+        self.first_move[0] = saved_first_move;
+
+        if !has_legal_moves {
+            // Check if king is in check
+            let king_square = self.board.bit_pieces[self.side as usize]
+                [crate::types::Piece::King as usize]
+                .next_bit();
+
+            if self.is_square_attacked_by_side(
+                self.side.opponent(),
+                crate::types::Square::try_from(king_square).unwrap(),
+            ) {
+                return GameResult::Checkmate(self.side.opponent());
+            } else {
+                return GameResult::Stalemate;
+            }
+        }
+
+        GameResult::InProgress
+    }
+
     /// Get the en passant file (0-7 for files A-H) from the last move, if available
     fn get_en_passant_file(&self) -> Option<u8> {
         if self.ply_from_start_of_game == 0 {
@@ -1973,6 +2031,23 @@ impl Position {
         score[0] - score[1]
     }
 
+    pub fn parse_square(input: &str) -> Option<usize> {
+        if input.len() != 2 {
+            return None;
+        }
+
+        let chars: Vec<char> = input.chars().collect();
+
+        if chars[0] < 'a' || chars[0] > 'h' || chars[1] < '1' || chars[1] > '8' {
+            return None;
+        }
+
+        let file = (chars[0] as u8 - b'a') as usize;
+        let rank = (chars[1] as u8 - b'1') as usize;
+
+        Some(rank * 8 + file)
+    }
+
     #[allow(dead_code)]
     fn set_hash_move(&mut self) {
         for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
@@ -2096,7 +2171,7 @@ impl Position {
     }
 
     fn check_if_time_is_exhausted(&mut self) {
-        if !self.fixed_depth && self.time_manager.is_hard_limit_reached() {
+        if self.time_manager.is_hard_limit_reached() {
             self.time_manager.stopped = true;
             // TODO: Remove panic
             panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
@@ -2148,7 +2223,7 @@ impl Position {
     /// Negamax search with alpha-beta pruning.
     /// Alpha is the lower bound (player's best guaranteed score).
     /// Beta is the upper bound (opponent's best guaranteed score).
-    fn search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
+    pub fn search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
         // Check for draw by repetition
         if self.ply > 0 && self.search_backward_for_identical_position() {
             return 0;
@@ -2255,96 +2330,6 @@ impl Position {
         best_score
     }
 
-    /// Launch the search using iterative deepening.
-    /// Searches progressively deeper until maximum depth is reached or time runs out.
-    pub fn think(&mut self) {
-        // Handle panics from the hard time check
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                if *msg == "TimeExhausted" {
-                    return;
-                }
-            }
-
-            default_hook(panic_info);
-        }));
-
-        // Initialize search state
-        self.ply = 0;
-        self.nodes = 0;
-
-        self.set_material_scores();
-
-        println!("\nPLY         NODES     SCORE      PV");
-
-        // Iterative deepening: search depth 1, 2, 3, ... up to (including) max_depth
-        for depth in 1..=self.max_depth {
-            // Soft time limit to avoid starting a depth that won't finish
-            if !self.fixed_depth && self.max_depth > 1 && depth > 1 {
-                if self.time_manager.is_soft_limit_reached() {
-                    break;
-                }
-            }
-
-            self.ply = 0;
-            self.first_move[0] = 0;
-
-            // Perform the search at this depth
-            let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                self.search(-10000, 10000, depth)
-            })) {
-                Ok(score) => score,
-                Err(panic_payload) => {
-                    // Handle time exhaustion panic
-                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
-                        if *msg == "TimeExhausted" {
-                            // Ensure we've unwound all moves
-                            while self.ply > 0 {
-                                self.take_back_move();
-                            }
-                            break;
-                        }
-                    }
-                    // Re-throw any other panics
-                    panic::resume_unwind(panic_payload);
-                }
-            };
-
-            // Ensure ply is back to 0 after search
-            while self.ply > 0 {
-                self.take_back_move();
-            }
-
-            // Display search results
-            print!("{:>3}  {:>12}  {:>8}   ", depth, self.nodes, score);
-
-            // Display best move
-            if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
-                print!(" ");
-                Position::display_move(from, to);
-            }
-
-            println!();
-            std::io::Write::flush(&mut std::io::stdout()).unwrap();
-
-            // Stop if we found a mate
-            if score > 9000 || score < -9000 {
-                break;
-            }
-        }
-
-        // Ensure position is clean after search
-        self.ply = 0;
-        self.first_move[0] = 0;
-
-        // Set hash_from and hash_to for retrieval by caller from best move
-        if let (Some(from), Some(to)) = (self.best_move_from, self.best_move_to) {
-            self.hash_from = Some(from);
-            self.hash_to = Some(to);
-        }
-    }
-
     pub fn new(time_manager: TimeManager) -> Self {
         let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
 
@@ -2391,8 +2376,6 @@ impl Position {
             best_move_to: None,
             hash_from: None,
             hash_to: None,
-            max_depth: 0,
-            fixed_depth: false,
             time_manager,
             // Static
             side: Side::White,
