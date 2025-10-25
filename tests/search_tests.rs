@@ -15,14 +15,17 @@
 /// optimal moves and correctly evaluates forcing sequences.
 mod test_utils;
 
-use chess_engine::types::{Piece, Square};
+use chess_engine::{
+    position::Position,
+    types::{Piece, Square},
+};
 use test_utils::*;
 
 /// Helper to run a search with fixed depth and return the best move
 fn search_position(fen: &str, depth: u16) -> Option<(Square, Square)> {
     let mut engine = engine_from_fen(fen, depth);
 
-    engine.think();
+    engine.think(None::<fn(u16, i32, &mut Position)>);
 
     match (engine.position.hash_from, engine.position.hash_to) {
         (Some(from), Some(to)) => Some((from, to)),
@@ -46,7 +49,7 @@ mod basic_search {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
 
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete and find a move
         assert!(
@@ -60,7 +63,7 @@ mod basic_search {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 2);
 
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         if let (Some(from), Some(to)) = (engine.position.hash_from, engine.position.hash_to) {
             // Generate legal moves and verify the returned move is legal
@@ -96,7 +99,7 @@ mod tactical_search {
         // Back rank mate setup: white queen can deliver mate
         let fen = "6k1/5ppp/8/8/8/8/5PPP/4Q1K1 w - - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // The search should find a mating move
         assert!(
@@ -110,7 +113,7 @@ mod tactical_search {
         // Opening position where white should develop pieces
         let fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a reasonable developing move
         assert!(engine.position.hash_from.is_some(), "Should find a move");
@@ -130,7 +133,7 @@ mod tactical_search {
         // Position from the Italian Game
         let fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a move
         assert!(
@@ -148,7 +151,7 @@ mod quiescent_search {
         // Standard Sicilian Defense position with tactical possibilities
         let fen = "rnbqkb1r/pp1ppppp/5n2/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
         let mut engine = engine_from_fen(fen, 2);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should consider the position
         assert!(engine.position.hash_from.is_some(), "Should find a move");
@@ -159,7 +162,7 @@ mod quiescent_search {
         // Quiet position - standard starting position
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 1);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete without hanging
         assert!(
@@ -174,7 +177,7 @@ mod quiescent_search {
         // Kiwipete position with many tactical possibilities
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a legal move
         assert!(engine.position.hash_from.is_some(), "Should find a move");
@@ -192,7 +195,7 @@ mod check_extensions {
         let mut engine = engine_from_fen(fen, 4);
 
         let nodes_before = engine.position.nodes;
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
         let nodes_after = engine.position.nodes;
 
         // Should search some nodes
@@ -204,7 +207,7 @@ mod check_extensions {
         // Complex position for testing en passant and promotion
         let fen = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should not crash or infinite loop
         assert!(
@@ -222,7 +225,7 @@ mod hash_table_integration {
     fn test_hash_table_stores_best_move() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Hash table should have the best move
         let hash_entry = engine.position.board.hash.probe();
@@ -242,13 +245,13 @@ mod hash_table_integration {
         let mut engine = engine_from_fen(fen, 3);
 
         // First search
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
         let _nodes_first = engine.position.nodes;
 
         // Reset and search again (hash table should help)
         engine.position.ply = 0;
         engine.position.nodes = 0;
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
         let nodes_second = engine.position.nodes;
 
         // Second search might be faster due to hash table, but at minimum should complete
@@ -260,7 +263,7 @@ mod hash_table_integration {
         // Position that can transpose via different move orders
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Transpositions should be detected via hash table
         // This test verifies the search completes correctly
@@ -299,7 +302,7 @@ mod repetition_detection {
         // Position where repetitions are possible
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a non-repeating move
         assert!(engine.position.hash_from.is_some(), "Should find a move");
@@ -315,7 +318,7 @@ mod move_ordering {
         let mut engine = engine_from_fen(fen, 4);
 
         // First search to populate hash
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         let first_move = engine.position.hash_from;
 
@@ -379,7 +382,7 @@ mod depth_and_reduction {
     fn test_search_respects_depth_limit() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 2);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete quickly with low depth
         assert!(
@@ -393,11 +396,11 @@ mod depth_and_reduction {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
         let mut engine1 = engine_from_fen(fen, 2);
-        engine1.think();
+        engine1.think(None::<fn(u16, i32, &mut Position)>);
         let nodes_depth2 = engine1.position.nodes;
 
         let mut engine2 = engine_from_fen(fen, 3);
-        engine2.think();
+        engine2.think(None::<fn(u16, i32, &mut Position)>);
         let nodes_depth3 = engine2.position.nodes;
 
         assert!(
@@ -412,7 +415,7 @@ mod depth_and_reduction {
         // Kiwipete position - standard perft testing position
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete in reasonable time
         assert!(
@@ -441,7 +444,7 @@ mod search_stability {
         // Position 5 from perft - complex middlegame
         let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -455,7 +458,7 @@ mod search_stability {
         // Position 3 from perft - endgame-like position
         let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -469,7 +472,7 @@ mod search_stability {
         // Position 6 from perft - middlegame position
         let fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -486,7 +489,7 @@ mod edge_cases {
         // Position with castling rights on both sides
         let fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -498,7 +501,7 @@ mod edge_cases {
     fn test_search_with_castling_rights() {
         let fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should consider castling
         assert!(
@@ -511,7 +514,7 @@ mod edge_cases {
     fn test_search_in_opening() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -524,7 +527,7 @@ mod edge_cases {
         // After 1.e4
         let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
             engine.position.hash_from.is_some(),
@@ -543,7 +546,7 @@ mod performance {
 
         let start = std::time::Instant::now();
 
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         let duration = start.elapsed();
 
@@ -559,7 +562,7 @@ mod performance {
     fn test_node_count_is_reasonable() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Depth 3 should visit reasonable number of nodes
         assert!(
@@ -580,7 +583,7 @@ mod principal_variation {
     fn test_pv_extracted_from_hash() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // PV should be stored in hash table
         assert!(
@@ -597,7 +600,7 @@ mod principal_variation {
     fn test_pv_is_legal_sequence() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think();
+        engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Try to make the PV moves
         if let (Some(from), Some(to)) = (engine.position.hash_from, engine.position.hash_to) {

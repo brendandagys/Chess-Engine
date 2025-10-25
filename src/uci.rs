@@ -1,4 +1,7 @@
-use crate::engine::Engine;
+use crate::{
+    engine::{Engine, SearchResult},
+    position::Position,
+};
 use std::io::{self, Write};
 
 const ENGINE_NAME: &str = "Chess Engine";
@@ -43,7 +46,54 @@ pub fn uci_loop(engine: &mut Engine) {
             }
             "go" => {
                 parse_go_command(engine, input);
-                let result = engine.think_uci(true);
+
+                let (final_depth, final_score) =
+                    engine.think(Some(|depth, score, position: &mut Position| {
+                        // Output UCI info line if requested
+                        if let (Some(from), Some(to)) =
+                            ((*position).best_move_from, (*position).best_move_to)
+                        {
+                            let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
+                            let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
+                            println!(
+                                "info depth {} score cp {} nodes {} time {} pv {}",
+                                depth,
+                                score,
+                                (*position).nodes,
+                                time_ms,
+                                best_move_uci
+                            );
+                        }
+                    }));
+
+                let time_ms = engine.position.time_manager.elapsed().as_millis() as u64;
+
+                // Build SearchResult
+                let (best_move, ponder_move) = if let (Some(from), Some(to)) =
+                    (engine.position.best_move_from, engine.position.best_move_to)
+                {
+                    (Engine::move_to_uci_string(from, to, None, false), None)
+                } else {
+                    (String::new(), None)
+                };
+
+                // Build PV (principal variation) - for now just the best move
+                let pv = if !best_move.is_empty() {
+                    vec![best_move.clone()]
+                } else {
+                    vec![]
+                };
+
+                let result = SearchResult {
+                    best_move,
+                    ponder_move,
+                    evaluation: final_score,
+                    depth: final_depth,
+                    nodes: engine.position.nodes as u64,
+                    pv,
+                    time_ms,
+                };
+
                 println!("bestmove {}", result.best_move);
                 stdout.flush().unwrap();
             }

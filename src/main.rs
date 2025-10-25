@@ -105,7 +105,23 @@ impl CLI {
             // Computer's turn
             if Some(self.engine.position.side) == self.engine.computer_side {
                 println!("\nComputer is thinking...");
-                self.engine.think();
+                println!("\nPLY         NODES     SCORE      PV");
+
+                self.engine
+                    .think(Some(|depth, score, position: &mut Position| {
+                        print!("{:>3}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
+
+                        // Display best move
+                        if let (Some(from), Some(to)) =
+                            ((*position).best_move_from, (*position).best_move_to)
+                        {
+                            print!(" ");
+                            Position::display_move(from, to);
+                        }
+
+                        println!();
+                        std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                    }));
 
                 let (hash_from, hash_to) = if let (Some(from), Some(to)) =
                     (self.engine.position.hash_from, self.engine.position.hash_to)

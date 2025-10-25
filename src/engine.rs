@@ -93,110 +93,11 @@ impl Engine {
             .generate_moves_and_captures(self.position.side);
     }
 
-    /// Launch the search using iterative deepening.
-    /// Searches progressively deeper until maximum depth is reached or time runs out.
-    pub fn think(&mut self) {
-        // Handle panics from the hard time check
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                if *msg == "TimeExhausted" {
-                    return;
-                }
-            }
-
-            default_hook(panic_info);
-        }));
-
-        // Initialize search state
-        self.position.ply = 0;
-        self.position.nodes = 0;
-
-        self.position.set_material_scores();
-
-        self.position.time_manager = TimeManager::new(
-            self.search_settings.wtime,
-            self.search_settings.btime,
-            self.search_settings.winc,
-            self.search_settings.binc,
-            self.search_settings.movetime,
-            self.position.side == Side::White,
-        );
-
-        println!("\nPLY         NODES     SCORE      PV");
-
-        // Iterative deepening: search depth 1, 2, 3, ... up to the maximum
-        for depth in 1..=self.search_settings.depth {
-            // Soft time limit to avoid starting a depth that won't finish
-            if self.search_settings.depth > 1 && depth > 1 {
-                if self.position.time_manager.is_soft_limit_reached() {
-                    break;
-                }
-            }
-
-            self.position.ply = 0;
-            self.position.first_move[0] = 0;
-
-            // Perform the search at this depth
-            let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                self.position.search(-10000, 10000, depth)
-            })) {
-                Ok(score) => score,
-                Err(panic_payload) => {
-                    // Handle time exhaustion panic
-                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
-                        if *msg == "TimeExhausted" {
-                            // Ensure we've unwound all moves
-                            while self.position.ply > 0 {
-                                self.position.take_back_move();
-                            }
-                            break;
-                        }
-                    }
-                    // Re-throw any other panics
-                    panic::resume_unwind(panic_payload);
-                }
-            };
-
-            // Ensure ply is back to 0 after search
-            while self.position.ply > 0 {
-                self.position.take_back_move();
-            }
-
-            // Display search results
-            print!("{:>3}  {:>12}  {:>8}   ", depth, self.position.nodes, score);
-
-            // Display best move
-            if let (Some(from), Some(to)) =
-                (self.position.best_move_from, self.position.best_move_to)
-            {
-                print!(" ");
-                Position::display_move(from, to);
-            }
-
-            println!();
-            std::io::Write::flush(&mut std::io::stdout()).unwrap();
-
-            // Stop if we found a mate
-            if score > 9000 || score < -9000 {
-                break;
-            }
-        }
-
-        // Ensure position is clean after search
-        self.position.ply = 0;
-        self.position.first_move[0] = 0;
-
-        // Set hash_from and hash_to for retrieval by caller from best move
-        if let (Some(from), Some(to)) = (self.position.best_move_from, self.position.best_move_to) {
-            self.position.hash_from = Some(from);
-            self.position.hash_to = Some(to);
-        }
-    }
-
-    /// Launch the search using iterative deepening and return a SearchResult.
-    /// Optionally outputs UCI-formatted info lines during search.
-    pub fn think_uci(&mut self, output_uci: bool) -> SearchResult {
+    /// Core iterative deepening search logic. Returns final depth reached and score achieved.
+    pub fn think<F>(&mut self, mut on_depth_complete: Option<F>) -> (u16, i32)
+    where
+        F: FnMut(u16, i32, &mut Position),
+    {
         // Handle panics from the hard time check
         let default_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
@@ -268,21 +169,12 @@ impl Engine {
             final_depth = depth;
             final_score = score;
 
-            // Output UCI info line
-            if output_uci {
-                if let (Some(from), Some(to)) =
-                    (self.position.best_move_from, self.position.best_move_to)
-                {
-                    let time_ms = self.position.time_manager.elapsed().as_millis() as u64;
-                    let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
-                    println!(
-                        "info depth {} score cp {} nodes {} time {} pv {}",
-                        depth, score, self.position.nodes, time_ms, best_move_uci
-                    );
-                }
+            // Callback for depth-specific output or processing
+            if let Some(ref mut callback) = on_depth_complete {
+                callback(depth, score, &mut self.position);
             }
 
-            // Stop if we found a mate
+            // Stop if callback requests it or if we found a mate
             if score > 9000 || score < -9000 {
                 break;
             }
@@ -292,35 +184,13 @@ impl Engine {
         self.position.ply = 0;
         self.position.first_move[0] = 0;
 
-        let time_ms = self.position.time_manager.elapsed().as_millis() as u64;
-
-        // Build SearchResult
-        let (best_move, ponder_move) = if let (Some(from), Some(to)) =
-            (self.position.best_move_from, self.position.best_move_to)
-        {
+        // Set hash_from and hash_to for retrieval by caller from best move
+        if let (Some(from), Some(to)) = (self.position.best_move_from, self.position.best_move_to) {
             self.position.hash_from = Some(from);
             self.position.hash_to = Some(to);
-            (Engine::move_to_uci_string(from, to, None, false), None)
-        } else {
-            (String::new(), None)
-        };
-
-        // Build PV (principal variation) - for now just the best move
-        let pv = if !best_move.is_empty() {
-            vec![best_move.clone()]
-        } else {
-            vec![]
-        };
-
-        SearchResult {
-            best_move,
-            ponder_move,
-            evaluation: final_score,
-            depth: final_depth,
-            nodes: self.position.nodes as u64,
-            pv,
-            time_ms,
         }
+
+        (final_depth, final_score)
     }
 
     /// Convert a move to UCI format (e.g., "e2e4", "e7e8q")
