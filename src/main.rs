@@ -144,7 +144,7 @@ impl CLI {
 
                 println!(
                     "\nComputer plays: \x1b[32m{}\x1b[0m",
-                    Engine::move_string(hash_from, hash_to, None)
+                    Engine::move_to_uci_string(hash_from, hash_to, None, true)
                 );
 
                 self.engine.position.ply = 0;
@@ -215,16 +215,7 @@ impl CLI {
                 }
                 "moves" => {
                     println!("\nLegal moves:");
-                    let move_count = self.engine.position.first_move[1];
-                    for i in 0..move_count as usize {
-                        if let Some(mv) = self.engine.position.move_list[i] {
-                            print!("{} ", Engine::move_string(mv.from, mv.to, mv.promote));
-                            if (i + 1) % 8 == 0 {
-                                println!();
-                            }
-                        }
-                    }
-                    println!();
+                    self.engine.display_legal_moves();
                     continue;
                 }
                 "new" => {
@@ -274,7 +265,7 @@ impl CLI {
             // COMMANDS WITH PARAMETERS
             if command.starts_with("fen ") {
                 let fen_str = &command[4..];
-                match self.engine.position.load_fen(fen_str) {
+                match self.engine.position.from_fen(fen_str) {
                     Ok(_) => {
                         self.engine.position.set_material_scores();
                         self.engine

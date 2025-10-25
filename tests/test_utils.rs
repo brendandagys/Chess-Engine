@@ -80,7 +80,7 @@ pub fn position_from_fen(fen: &str) -> Position {
     ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
     position
-        .load_fen(fen)
+        .from_fen(fen)
         .expect(&format!("Failed to load FEN: {}", fen));
     position.set_material_scores();
     reset_move_state(&mut position);
@@ -93,7 +93,7 @@ pub fn engine_from_fen(fen: &str, depth: u16) -> Engine {
     let mut engine = Engine::new(None, None, None, None, None, Some(depth));
     engine
         .position
-        .load_fen(fen)
+        .from_fen(fen)
         .expect(&format!("Failed to load FEN: {}", fen));
     engine.position.set_material_scores();
     reset_move_state(&mut engine.position);

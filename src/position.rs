@@ -8,7 +8,7 @@ use crate::{
         QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     time::TimeManager,
-    types::{BitBoard, Board, Game, Move, Piece, Side, Square},
+    types::{BitBoard, Board, Game, GameResult, Move, Piece, Side, Square},
 };
 
 pub struct Position {
@@ -1554,9 +1554,7 @@ impl Position {
     }
 
     /// Checks the current game state and returns the result
-    pub fn check_game_result(&mut self) -> crate::types::GameResult {
-        use crate::types::GameResult;
-
+    pub fn check_game_result(&mut self) -> GameResult {
         if self.reps() >= 3 {
             return GameResult::DrawByRepetition;
         }
@@ -1598,13 +1596,12 @@ impl Position {
 
         if !has_legal_moves {
             // Check if king is in check
-            let king_square = self.board.bit_pieces[self.side as usize]
-                [crate::types::Piece::King as usize]
-                .next_bit();
+            let king_square =
+                self.board.bit_pieces[self.side as usize][Piece::King as usize].next_bit();
 
             if self.is_square_attacked_by_side(
                 self.side.opponent(),
-                crate::types::Square::try_from(king_square).unwrap(),
+                Square::try_from(king_square).unwrap(),
             ) {
                 return GameResult::Checkmate(self.side.opponent());
             } else {
@@ -1786,7 +1783,6 @@ impl Position {
             None
         };
 
-        // Update en passant hash if it changed
         self.board
             .hash
             .update_en_passant(old_en_passant_file, new_en_passant_file);
@@ -2436,13 +2432,12 @@ impl Position {
     /// ```ignore
     /// let mut position = Position::new();
     /// // Starting position
-    /// position.load_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+    /// position.from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
     /// // Position after 1.e4
-    /// position.load_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
+    /// position.from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
     /// ```
-    pub fn load_fen(&mut self, fen: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Reset board
-        self.board = crate::types::Board::empty();
+    pub fn from_fen(&mut self, fen: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.board = Board::empty();
 
         let parts: Vec<&str> = fen.split(' ').collect();
         if parts.is_empty() {
@@ -2528,22 +2523,30 @@ impl Position {
             for ch in parts[2].chars() {
                 match ch {
                     'K' => {
-                        if self.board.bit_pieces[0][Piece::King as usize].is_bit_set(Square::E1) {
+                        if self.board.bit_pieces[Side::White as usize][Piece::King as usize]
+                            .is_bit_set(Square::E1)
+                        {
                             self.castle |= 1;
                         }
                     }
                     'Q' => {
-                        if self.board.bit_pieces[0][Piece::King as usize].is_bit_set(Square::E1) {
+                        if self.board.bit_pieces[Side::White as usize][Piece::King as usize]
+                            .is_bit_set(Square::E1)
+                        {
                             self.castle |= 2;
                         }
                     }
                     'k' => {
-                        if self.board.bit_pieces[1][Piece::King as usize].is_bit_set(Square::E8) {
+                        if self.board.bit_pieces[Side::Black as usize][Piece::King as usize]
+                            .is_bit_set(Square::E8)
+                        {
                             self.castle |= 4;
                         }
                     }
                     'q' => {
-                        if self.board.bit_pieces[1][Piece::King as usize].is_bit_set(Square::E8) {
+                        if self.board.bit_pieces[Side::Black as usize][Piece::King as usize]
+                            .is_bit_set(Square::E8)
+                        {
                             self.castle |= 8;
                         }
                     }
@@ -2557,6 +2560,7 @@ impl Position {
         // Store the info but defer setting game_list until after ply_from_start_of_game is set
         let ep_game_entry: Option<(Square, Square)> = if parts.len() > 3 {
             let ep_square_str = parts[3];
+
             if ep_square_str != "-" {
                 // Validate en passant square format (e.g., "e3", "d6")
                 if ep_square_str.len() == 2 {

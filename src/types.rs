@@ -82,15 +82,12 @@ impl Square {
             Square::A8, Square::B8, Square::C8, Square::D8, Square::E8, Square::F8, Square::G8, Square::H8,
         ].into_iter()
     }
-}
 
-impl Square {
     #[inline]
     pub fn as_bit(self) -> u64 {
         1u64 << (self as u64)
     }
 }
-
 impl From<BitBoard> for Square {
     fn from(bitboard: BitBoard) -> Self {
         if bitboard.0.count_ones() != 1 {
@@ -218,16 +215,6 @@ pub enum Side {
     Black = 1,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum GameResult {
-    InProgress,
-    Checkmate(Side), // Winner
-    Stalemate,
-    DrawByRepetition,
-    DrawByFiftyMoveRule,
-    DrawByInsufficientMaterial,
-}
-
 impl Side {
     pub fn iter() -> impl Iterator<Item = Side> {
         [Side::White, Side::Black].into_iter()
@@ -341,6 +328,7 @@ impl Board {
     }
 
     pub fn add_piece(&mut self, side: Side, piece: Piece, square: Square) {
+        // TODO: Are these checks needed?
         if piece == Piece::Empty {
             return;
         }
@@ -384,4 +372,14 @@ impl Board {
         self.bit_pieces[side as usize][piece as usize].clear_bit(from);
         self.bit_pieces[side as usize][piece as usize].set_bit(to);
     }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum GameResult {
+    InProgress,
+    Checkmate(Side), // Winner
+    Stalemate,
+    DrawByRepetition,
+    DrawByFiftyMoveRule,
+    DrawByInsufficientMaterial,
 }

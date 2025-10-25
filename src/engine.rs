@@ -30,6 +30,7 @@ pub struct SearchResult {
     pub depth: u16,
     pub nodes: u64,
     pub pv: Vec<String>,
+    pub time_ms: u64,
 }
 
 impl Default for Engine {
@@ -193,15 +194,154 @@ impl Engine {
         }
     }
 
-    pub fn move_string(from: Square, to: Square, promote: Option<Piece>) -> String {
+    /// Launch the search using iterative deepening and return a SearchResult.
+    /// Optionally outputs UCI-formatted info lines during search.
+    pub fn think_uci(&mut self, output_uci: bool) -> SearchResult {
+        // Handle panics from the hard time check
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
+                if *msg == "TimeExhausted" {
+                    return;
+                }
+            }
+
+            default_hook(panic_info);
+        }));
+
+        // Initialize search state
+        self.position.ply = 0;
+        self.position.nodes = 0;
+
+        self.position.set_material_scores();
+
+        self.position.time_manager = TimeManager::new(
+            self.search_settings.wtime,
+            self.search_settings.btime,
+            self.search_settings.winc,
+            self.search_settings.binc,
+            self.search_settings.movetime,
+            self.position.side == Side::White,
+        );
+
+        let mut final_depth = 0;
+        let mut final_score = 0;
+
+        // Iterative deepening: search depth 1, 2, 3, ... up to the maximum
+        for depth in 1..=self.search_settings.depth {
+            // Soft time limit to avoid starting a depth that won't finish
+            if self.search_settings.depth > 1 && depth > 1 {
+                if self.position.time_manager.is_soft_limit_reached() {
+                    break;
+                }
+            }
+
+            self.position.ply = 0;
+            self.position.first_move[0] = 0;
+
+            // Perform the search at this depth
+            let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                self.position.search(-10000, 10000, depth)
+            })) {
+                Ok(score) => score,
+                Err(panic_payload) => {
+                    // Handle time exhaustion panic
+                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
+                        if *msg == "TimeExhausted" {
+                            // Ensure we've unwound all moves
+                            while self.position.ply > 0 {
+                                self.position.take_back_move();
+                            }
+                            break;
+                        }
+                    }
+                    // Re-throw any other panics
+                    panic::resume_unwind(panic_payload);
+                }
+            };
+
+            // Ensure ply is back to 0 after search
+            while self.position.ply > 0 {
+                self.position.take_back_move();
+            }
+
+            final_depth = depth;
+            final_score = score;
+
+            // Output UCI info line
+            if output_uci {
+                if let (Some(from), Some(to)) =
+                    (self.position.best_move_from, self.position.best_move_to)
+                {
+                    let time_ms = self.position.time_manager.elapsed().as_millis() as u64;
+                    let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
+                    println!(
+                        "info depth {} score cp {} nodes {} time {} pv {}",
+                        depth, score, self.position.nodes, time_ms, best_move_uci
+                    );
+                }
+            }
+
+            // Stop if we found a mate
+            if score > 9000 || score < -9000 {
+                break;
+            }
+        }
+
+        // Ensure position is clean after search
+        self.position.ply = 0;
+        self.position.first_move[0] = 0;
+
+        let time_ms = self.position.time_manager.elapsed().as_millis() as u64;
+
+        // Build SearchResult
+        let (best_move, ponder_move) = if let (Some(from), Some(to)) =
+            (self.position.best_move_from, self.position.best_move_to)
+        {
+            self.position.hash_from = Some(from);
+            self.position.hash_to = Some(to);
+            (Engine::move_to_uci_string(from, to, None, false), None)
+        } else {
+            (String::new(), None)
+        };
+
+        // Build PV (principal variation) - for now just the best move
+        let pv = if !best_move.is_empty() {
+            vec![best_move.clone()]
+        } else {
+            vec![]
+        };
+
+        SearchResult {
+            best_move,
+            ponder_move,
+            evaluation: final_score,
+            depth: final_depth,
+            nodes: self.position.nodes as u64,
+            pv,
+            time_ms,
+        }
+    }
+
+    /// Convert a move to UCI format (e.g., "e2e4", "e7e8q")
+    pub fn move_to_uci_string(
+        from: Square,
+        to: Square,
+        promote: Option<Piece>,
+        pretty: bool,
+    ) -> String {
         let from_file = (from as usize % 8) as u8 + b'a';
         let from_rank = (from as usize / 8) as u8 + b'1';
         let to_file = (to as usize % 8) as u8 + b'a';
         let to_rank = (to as usize / 8) as u8 + b'1';
 
         let mut result = format!(
-            "{}{} -> {}{}",
-            from_file as char, from_rank as char, to_file as char, to_rank as char
+            "{}{}{}{}{}",
+            from_file as char,
+            from_rank as char,
+            to_file as char,
+            to_rank as char,
+            if pretty { " -> " } else { "" }
         );
 
         if let Some(piece) = promote {
@@ -215,6 +355,54 @@ impl Engine {
         }
 
         result
+    }
+
+    /// Parse a UCI move string (e.g. "e2e4", "e7e8q") and return the from/to squares and promotion piece
+    pub fn move_from_uci_string(move_str: &str) -> Result<(Square, Square, Option<Piece>), String> {
+        if move_str.len() < 4 || move_str.len() > 5 {
+            return Err(format!("Invalid move string length: {}", move_str));
+        }
+
+        let chars: Vec<char> = move_str.chars().collect();
+
+        if chars[0] < 'a'
+            || chars[0] > 'h'
+            || chars[1] < '1'
+            || chars[1] > '8'
+            || chars[2] < 'a'
+            || chars[2] > 'h'
+            || chars[3] < '1'
+            || chars[3] > '8'
+        {
+            return Err(format!("Invalid move format: {}", move_str));
+        }
+
+        let from_file = (chars[0] as u8 - b'a') as usize;
+        let from_rank = (chars[1] as u8 - b'1') as usize;
+        let to_file = (chars[2] as u8 - b'a') as usize;
+        let to_rank = (chars[3] as u8 - b'1') as usize;
+
+        let from_square = from_rank * 8 + from_file;
+        let to_square = to_rank * 8 + to_file;
+
+        let from = Square::try_from(from_square as u8)
+            .map_err(|e| format!("Invalid from square: {}", e))?;
+        let to =
+            Square::try_from(to_square as u8).map_err(|e| format!("Invalid to square: {}", e))?;
+
+        let promote = if chars.len() == 5 {
+            match chars[4] {
+                'q' => Some(Piece::Queen),
+                'r' => Some(Piece::Rook),
+                'b' => Some(Piece::Bishop),
+                'n' => Some(Piece::Knight),
+                _ => return Err(format!("Invalid promotion piece: {}", chars[4])),
+            }
+        } else {
+            None
+        };
+
+        Ok((from, to, promote))
     }
 
     /// Parse a move in algebraic notation (e2e4) and return the index in the move list
@@ -255,5 +443,20 @@ impl Engine {
         }
 
         None
+    }
+
+    pub fn display_legal_moves(&self) {
+        for i in 0..self.position.first_move[1] as usize {
+            if let Some(mv) = self.position.move_list[i] {
+                print!(
+                    "{} ",
+                    Engine::move_to_uci_string(mv.from, mv.to, mv.promote, false)
+                );
+                if (i + 1) % 8 == 0 {
+                    println!();
+                }
+            }
+        }
+        println!();
     }
 }
