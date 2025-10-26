@@ -107,69 +107,18 @@ impl CLI {
                 println!("\nComputer is thinking...");
                 println!("\nPLY         NODES     SCORE      PV");
 
-                self.engine
-                    .think(Some(|depth, score, position: &mut Position| {
-                        print!("{:>3}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
+                let has_legal_moves = self.make_computer_move();
 
-                        // Display best move
-                        if let (Some(from), Some(to)) =
-                            ((*position).best_move_from, (*position).best_move_to)
-                        {
-                            print!(" ");
-                            Position::display_move(from, to);
-                        }
-
-                        println!();
-                        std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                    }));
-
-                let (hash_from, hash_to) = if let (Some(from), Some(to)) =
-                    (self.engine.position.hash_from, self.engine.position.hash_to)
-                {
-                    (from, to)
-                } else {
-                    // TODO: What is the purpose of this branch?
-                    println!("(No legal moves)");
-                    self.engine.computer_side = None;
-                    self.display_board();
-                    self.engine
-                        .position
-                        .generate_moves_and_captures(self.engine.position.side);
-                    continue;
-                };
-
-                self.engine.position.make_move(hash_from, hash_to);
-                self.engine.position.set_material_scores();
-
-                let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
-
-                print!("\nTime: {} ms", elapsed_ms);
-
-                let nps = match elapsed_ms {
-                    0 => 0.0, // Avoid division by zero
-                    ms => (self.engine.position.nodes as f64 / ms as f64) * 1000.0,
-                };
-
-                print!(" | Nodes/s: {}", nps as u64);
-
-                print!(
-                    " | Soft: {:?} - Hard: {:?}\n",
-                    self.engine.position.time_manager.soft_limit,
-                    self.engine.position.time_manager.hard_limit
-                );
-
-                println!(
-                    "\nComputer plays: \x1b[32m{}\x1b[0m",
-                    Engine::move_to_uci_string(hash_from, hash_to, None, true)
-                );
-
-                self.engine.position.ply = 0;
-                self.engine.position.first_move[0] = 0;
                 self.engine
                     .position
                     .generate_moves_and_captures(self.engine.position.side);
 
-                self.print_result();
+                if has_legal_moves {
+                    self.print_result();
+                } else {
+                    println!("(No legal moves)");
+                    self.engine.computer_side = None;
+                }
 
                 self.display_board();
 
@@ -415,7 +364,6 @@ impl CLI {
         println!();
 
         let choice = input.trim();
-
         let player_side = match choice {
             "1" => Side::White,
             "2" => Side::Black,
@@ -434,6 +382,62 @@ impl CLI {
         };
 
         self.engine.computer_side = Some(player_side.opponent());
+    }
+
+    fn make_computer_move(&mut self) -> bool {
+        self.engine
+            .think(Some(|depth, score, position: &mut Position| {
+                print!("{:>3}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
+
+                // Display best move
+                if let (Some(from), Some(to)) =
+                    ((*position).best_move_from, (*position).best_move_to)
+                {
+                    print!(" ");
+                    Position::display_move(from, to);
+                }
+
+                println!();
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+            }));
+
+        let (hash_from, hash_to) = if let (Some(from), Some(to)) =
+            (self.engine.position.hash_from, self.engine.position.hash_to)
+        {
+            (from, to)
+        } else {
+            return false;
+        };
+
+        self.engine.position.make_move(hash_from, hash_to);
+        self.engine.position.set_material_scores();
+
+        let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
+
+        print!("\nTime: {} ms", elapsed_ms);
+
+        let nodes_per_second = match elapsed_ms {
+            0 => 0.0, // Avoid division by zero
+            ms => (self.engine.position.nodes as f64 / ms as f64) * 1000.0,
+        };
+
+        print!(" | Nodes/s: {}", nodes_per_second as u64);
+
+        print!(
+            " | Soft: {:?} - Hard: {:?}\n",
+            self.engine.position.time_manager.soft_limit,
+            self.engine.position.time_manager.hard_limit
+        );
+
+        println!(
+            "\nComputer plays: \x1b[32m{}\x1b[0m",
+            Engine::move_to_uci_string(hash_from, hash_to, None, true)
+        );
+
+        self.engine.position.ply = 0;
+        self.engine.position.first_move[0] = 0;
+
+        true
     }
 }
 
