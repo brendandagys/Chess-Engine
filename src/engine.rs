@@ -56,12 +56,8 @@ impl Engine {
         let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
         let depth = depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
-        let time_manager = TimeManager::new(wtime, btime, winc, binc, movetime, true);
-        let mut position = Position::new(time_manager);
-        position.set_material_scores(); // TODO: Can this be called in Position::new()? Or is it also called elsewhere?
-
         Engine {
-            position,
+            position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
             search_settings: SearchSettings {
                 wtime,
                 btime,
@@ -88,7 +84,6 @@ impl Engine {
 
         self.position = Position::new(time_manager);
 
-        self.position.set_material_scores();
         self.position
             .generate_moves_and_captures(self.position.side);
     }
@@ -110,12 +105,6 @@ impl Engine {
             default_hook(panic_info);
         }));
 
-        // Initialize search state
-        self.position.ply = 0;
-        self.position.nodes = 0;
-
-        self.position.set_material_scores();
-
         self.position.time_manager = TimeManager::new(
             self.search_settings.wtime,
             self.search_settings.btime,
@@ -125,12 +114,14 @@ impl Engine {
             self.position.side == Side::White,
         );
 
+        self.position.nodes = 0;
+
         let mut final_depth = 0;
         let mut final_score = 0;
 
-        // Iterative deepening: search depth 1, 2, 3, ... up to the maximum
+        // Iterative deepening: search depth 1, 2, 3, ... maximum
         for depth in 1..=self.search_settings.depth {
-            // Soft time limit to avoid starting a depth that won't finish
+            // Soft time limit (avoid starting a depth that won't finish)
             if self.search_settings.depth > 1 && depth > 1 {
                 if self.position.time_manager.is_soft_limit_reached() {
                     break;
@@ -180,10 +171,6 @@ impl Engine {
             }
         }
 
-        // Ensure position is clean after search
-        self.position.ply = 0;
-        self.position.first_move[0] = 0;
-
         // Set hash_from and hash_to for retrieval by caller from best move
         if let (Some(from), Some(to)) = (self.position.best_move_from, self.position.best_move_to) {
             self.position.hash_from = Some(from);
@@ -209,9 +196,9 @@ impl Engine {
             "{}{}{}{}{}",
             from_file as char,
             from_rank as char,
+            if pretty { " -> " } else { "" },
             to_file as char,
             to_rank as char,
-            if pretty { " -> " } else { "" }
         );
 
         if let Some(piece) = promote {

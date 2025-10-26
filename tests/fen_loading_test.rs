@@ -18,7 +18,6 @@ fn test_load_starting_position_from_fen() {
 
     // Verify white is to move
     assert_eq!(position.side, Side::White);
-    assert_eq!(position.other_side, Side::Black);
 
     // Verify castling rights (all enabled: 0b1111 = 15)
     assert_eq!(position.castle, 0b1111);
@@ -84,7 +83,6 @@ fn test_load_position_with_black_to_move() {
 
     // Verify black is to move
     assert_eq!(position.side, Side::Black);
-    assert_eq!(position.other_side, Side::White);
 }
 
 #[test]

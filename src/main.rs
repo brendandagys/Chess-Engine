@@ -6,8 +6,8 @@ use std::io::{self, Write};
 
 struct CLI {
     engine: Engine,
-    flip: bool,
     display_enabled: bool,
+    flip: bool,
 }
 
 impl CLI {
@@ -16,8 +16,8 @@ impl CLI {
 
         Self {
             engine,
-            flip: false,
             display_enabled: true,
+            flip: false,
         }
     }
 
@@ -48,11 +48,7 @@ impl CLI {
         }
     }
 
-    fn print_result(&mut self) {
-        self.engine.position.set_material_scores();
-
-        let result = self.engine.position.check_game_result();
-
+    fn print_result(&mut self, result: GameResult) {
         match result {
             GameResult::InProgress => {}
             GameResult::Checkmate(winner) => {
@@ -93,17 +89,15 @@ impl CLI {
         self.display_board();
 
         loop {
-            // Display current turn info
             println!("\n-------------------------------");
             println!(
                 "*   Ply: {} | To move: {:?}   *",
-                self.engine.position.ply_from_start_of_game + 1,
-                self.engine.position.side
+                self.engine.position.ply_from_start_of_game, self.engine.position.side
             );
             println!("-------------------------------");
 
             // Computer's turn
-            if Some(self.engine.position.side) == self.engine.computer_side {
+            if self.engine.computer_side == Some(self.engine.position.side) {
                 println!("\nComputer is thinking...");
                 println!("\nPLY         NODES     SCORE      PV");
 
@@ -113,8 +107,9 @@ impl CLI {
                     .position
                     .generate_moves_and_captures(self.engine.position.side);
 
+                let game_result = self.engine.position.check_game_result();
                 if has_legal_moves {
-                    self.print_result();
+                    self.print_result(game_result);
                 } else {
                     println!("(No legal moves)");
                     self.engine.computer_side = None;
@@ -125,9 +120,6 @@ impl CLI {
                 continue;
             }
 
-            // Show available moves
-            self.engine.position.ply = 0;
-            self.engine.position.first_move[0] = 0;
             self.engine
                 .position
                 .generate_moves_and_captures(self.engine.position.side);
@@ -202,7 +194,6 @@ impl CLI {
                 }
                 "switch" => {
                     self.engine.position.side = self.engine.position.side.opponent();
-                    self.engine.position.other_side = self.engine.position.other_side.opponent();
                     self.engine
                         .position
                         .generate_moves_and_captures(self.engine.position.side);
@@ -216,8 +207,6 @@ impl CLI {
                     }
                     self.engine.computer_side = None;
                     self.engine.position.take_back_move();
-                    self.engine.position.ply = 0;
-                    self.engine.position.first_move[0] = 0;
                     self.engine
                         .position
                         .generate_moves_and_captures(self.engine.position.side);
@@ -232,7 +221,6 @@ impl CLI {
                 let fen_str = &command[4..];
                 match self.engine.position.from_fen(fen_str) {
                     Ok(_) => {
-                        self.engine.position.set_material_scores();
                         self.engine
                             .position
                             .generate_moves_and_captures(self.engine.position.side);
@@ -330,13 +318,12 @@ impl CLI {
                         continue;
                     }
 
-                    self.engine.position.set_material_scores();
-                    self.engine.position.ply = 0;
-                    self.engine.position.first_move[0] = 0;
                     self.engine
                         .position
                         .generate_moves_and_captures(self.engine.position.side);
-                    self.print_result();
+
+                    let game_result = self.engine.position.check_game_result();
+                    self.print_result(game_result);
                     self.display_board();
                 } else {
                     panic!("Move found in move list, but is `None`");
@@ -410,7 +397,6 @@ impl CLI {
         };
 
         self.engine.position.make_move(hash_from, hash_to);
-        self.engine.position.set_material_scores();
 
         let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
 
@@ -433,9 +419,6 @@ impl CLI {
             "\nComputer plays: \x1b[32m{}\x1b[0m",
             Engine::move_to_uci_string(hash_from, hash_to, None, true)
         );
-
-        self.engine.position.ply = 0;
-        self.engine.position.first_move[0] = 0;
 
         true
     }

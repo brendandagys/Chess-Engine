@@ -22,7 +22,6 @@ fn empty_position_with_kings(side_to_move: Side) -> Position {
 
     position.castle = 0;
     position.side = side_to_move;
-    position.other_side = side_to_move.opponent();
     position.ply_from_start_of_game = 0;
     position.fifty = 0;
 

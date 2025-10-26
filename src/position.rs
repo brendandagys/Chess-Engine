@@ -16,7 +16,7 @@ pub struct Position {
     pub move_list: [Option<Move>; MOVE_STACK],
     pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
     pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
-    pub fifty: u8,                    // Moves since last pawn move or capture (up to 100-ply)
+    pub fifty: u8,                    // Ply since last capture or pawn move (0-100) [50-move rule]
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
     pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
     pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
@@ -33,7 +33,6 @@ pub struct Position {
     pub time_manager: TimeManager,
     // STATIC
     pub side: Side,
-    pub other_side: Side,
     square_score: [[[i32; NUM_SQUARES]; NUM_PIECE_TYPES]; NUM_SIDES],
     king_endgame_score: [[i32; NUM_SQUARES]; NUM_SIDES],
     passed_pawns_score: [[i32; NUM_SQUARES]; NUM_SIDES], // Score for 7th rank is built into `square_score`
@@ -1765,10 +1764,11 @@ impl Position {
             game.promote = None;
         }
 
+        self.set_material_scores();
+
         let original_side = self.side;
 
         self.side = self.side.opponent();
-        self.other_side = self.other_side.opponent();
 
         self.board.hash.toggle_side_to_move();
 
@@ -1806,7 +1806,6 @@ impl Position {
         let current_en_passant_file = self.get_en_passant_file();
 
         self.side = self.side.opponent();
-        self.other_side = self.other_side.opponent();
 
         self.board.hash.toggle_side_to_move();
 
@@ -1878,6 +1877,8 @@ impl Position {
                     .update_piece(self.side, Piece::Rook, Square::D8, Square::A8);
             }
         }
+
+        self.set_material_scores();
     }
 
     fn evaluate_pawn(
@@ -2373,9 +2374,8 @@ impl Position {
             hash_from: None,
             hash_to: None,
             time_manager,
-            // Static
             side: Side::White,
-            other_side: Side::Black,
+            // Static
             square_score,
             king_endgame_score,
             passed_pawns_score,
@@ -2408,6 +2408,7 @@ impl Position {
         mut_position.board.hash.update_castle_rights(0, 0b1111);
         // White to move by default, so no need to toggle side-to-move
 
+        mut_position.set_material_scores();
         mut_position
     }
 
@@ -2507,11 +2508,9 @@ impl Position {
             match parts[1] {
                 "w" => {
                     self.side = Side::White;
-                    self.other_side = Side::Black;
                 }
                 "b" => {
                     self.side = Side::Black;
-                    self.other_side = Side::White;
                 }
                 _ => {}
             }
@@ -2662,7 +2661,7 @@ impl Position {
                 from: pawn_from,
                 to: pawn_to,
                 promote: None,
-                capture: Piece::Empty,
+                capture: Piece::Empty, // TODO: Is this why guards were needed for search tests?
                 fifty: self.fifty,
                 castle: self.castle,
                 hash: self.board.hash.current_key,
