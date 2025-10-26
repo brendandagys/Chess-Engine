@@ -46,7 +46,7 @@ fn position_with_kings(side_to_move: Side) -> Position {
 
 /// Helper to get evaluation from white's perspective
 fn evaluate(position: &Position) -> i32 {
-    position.evaluate_position()
+    position.evaluate()
 }
 
 #[cfg(test)]

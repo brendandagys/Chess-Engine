@@ -1933,7 +1933,7 @@ impl Position {
     /// Adds a score for each unit on the board.
     /// Optionally adds a score for king position if opponent has a queen.
     /// Returns side-to-move's score minus opponent's score.
-    pub fn evaluate_position(&self) -> i32 {
+    pub fn evaluate(&self) -> i32 {
         let mut score = [0, 0];
 
         let mut queenside_pawns = [0, 0];
@@ -2116,7 +2116,7 @@ impl Position {
             self.check_if_time_is_exhausted();
         }
 
-        let stand_pat = self.evaluate_position();
+        let stand_pat = self.evaluate();
 
         // Beta cutoff
         if stand_pat >= beta {
@@ -2239,7 +2239,7 @@ impl Position {
 
         // Hard cutoff at maximum ply
         if self.ply >= MAX_PLY - 1 {
-            return self.evaluate_position();
+            return self.evaluate();
         }
 
         // Check if we're currently in check
