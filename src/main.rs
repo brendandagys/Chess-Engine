@@ -200,7 +200,6 @@ impl CLI {
                     continue;
                 }
                 "undo" => {
-                    // TODO: Can this be improved? Should set material scores? Why is ply set to 0?
                     if self.engine.position.ply_from_start_of_game == 0 {
                         println!("\nNo moves to undo");
                         continue;

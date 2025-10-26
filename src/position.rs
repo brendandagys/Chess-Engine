@@ -1571,16 +1571,11 @@ impl Position {
         }
 
         // Generate moves to check if any legal moves exist
-        let saved_ply = self.ply;
-        let saved_first_move = self.first_move[0];
-
-        self.ply = 0;
-        self.first_move[0] = 0;
         self.generate_moves_and_captures(self.side);
 
         let mut has_legal_moves = false;
-        for i in 0..self.first_move[1] as usize {
-            if let Some(mv) = self.move_list[i] {
+        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] as isize {
+            if let Some(mv) = self.move_list[i as usize] {
                 if self.make_move_with_promotion(mv.from, mv.to, mv.promote) {
                     self.take_back_move();
                     has_legal_moves = true;
@@ -1588,10 +1583,6 @@ impl Position {
                 }
             }
         }
-
-        // Restore state
-        self.ply = saved_ply;
-        self.first_move[0] = saved_first_move;
 
         if !has_legal_moves {
             // Check if king is in check
@@ -1809,7 +1800,9 @@ impl Position {
 
         self.board.hash.toggle_side_to_move();
 
-        self.ply -= 1;
+        // 2 undo calls from CLI may cause underflow since ply is 1 after it moves piece
+        self.ply = self.ply.saturating_sub(1);
+
         self.ply_from_start_of_game -= 1;
 
         let from = game.from;
