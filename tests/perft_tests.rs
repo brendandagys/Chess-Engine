@@ -15,7 +15,7 @@ fn perft(position: &mut Position, depth: usize) -> u64 {
     let current_side = position.side;
 
     // Generate moves for the current side
-    position.generate_moves_and_captures(current_side);
+    position.generate_moves_and_captures(current_side, |_, _, _| 0);
 
     // Get the move range for current ply
     let start = position.first_move[current_ply].max(0) as usize;
@@ -63,7 +63,7 @@ fn perft_divide(position: &mut Position, depth: usize) -> u64 {
     let current_ply = position.ply;
     let current_side = position.side;
 
-    position.generate_moves_and_captures(current_side);
+    position.generate_moves_and_captures(current_side, |_, _, _| 0);
 
     let start = position.first_move[current_ply].max(0) as usize;
     let end = if current_ply + 1 < position.first_move.len()

@@ -1,7 +1,10 @@
 use std::panic;
 
 use crate::{
-    constants::{DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS},
+    constants::{
+        DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS,
+        NUM_SIDES, NUM_SQUARES,
+    },
     position::Position,
     time::TimeManager,
     types::{Piece, Side, Square},
@@ -12,6 +15,7 @@ pub struct Engine {
     pub position: Position,
     pub search_settings: SearchSettings,
     pub computer_side: Option<Side>,
+    history_table: [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES], // [color][from][to] = score
 }
 
 pub struct SearchSettings {
@@ -67,6 +71,7 @@ impl Engine {
                 movetime,
             },
             computer_side: None,
+            history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
         }
     }
 
@@ -85,7 +90,7 @@ impl Engine {
         self.position = Position::new(time_manager);
 
         self.position
-            .generate_moves_and_captures(self.position.side);
+            .generate_moves_and_captures(self.position.side, |_, _, _| 0);
     }
 
     /// Core iterative deepening search logic. Returns final depth reached and score achieved.
@@ -116,6 +121,9 @@ impl Engine {
 
         self.position.nodes = 0;
 
+        // Reset history table at the start of the search
+        self.history_table = [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES];
+
         let mut final_depth = 0;
         let mut final_score = 0;
 
@@ -133,12 +141,13 @@ impl Engine {
 
             // Perform the search at this depth
             let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                self.position.search(-10000, 10000, depth)
+                self.position
+                    .search(-10000, 10000, depth, &mut self.history_table)
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
-                    // Handle time exhaustion panic
                     if let Some(msg) = panic_payload.downcast_ref::<&str>() {
+                        // Handle time exhaustion panic
                         if *msg == "TimeExhausted" {
                             // Ensure we've unwound all moves
                             while self.position.ply > 0 {
@@ -147,6 +156,7 @@ impl Engine {
                             break;
                         }
                     }
+
                     // Re-throw any other panics
                     panic::resume_unwind(panic_payload);
                 }

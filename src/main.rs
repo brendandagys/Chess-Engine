@@ -54,7 +54,7 @@ impl CLI {
             GameResult::Checkmate(winner) => {
                 self.engine
                     .position
-                    .generate_moves_and_captures(self.engine.position.side);
+                    .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                 self.display_board();
                 println!("\nGAME OVER");
 
@@ -105,7 +105,7 @@ impl CLI {
 
                 self.engine
                     .position
-                    .generate_moves_and_captures(self.engine.position.side);
+                    .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
 
                 let game_result = self.engine.position.check_game_result();
                 if has_legal_moves {
@@ -122,7 +122,7 @@ impl CLI {
 
             self.engine
                 .position
-                .generate_moves_and_captures(self.engine.position.side);
+                .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
 
             print!("\nFrom square OR command > ");
             io::stdout().flush().unwrap();
@@ -196,7 +196,7 @@ impl CLI {
                     self.engine.position.side = self.engine.position.side.opponent();
                     self.engine
                         .position
-                        .generate_moves_and_captures(self.engine.position.side);
+                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                     continue;
                 }
                 "undo" => {
@@ -208,7 +208,7 @@ impl CLI {
                     self.engine.position.take_back_move();
                     self.engine
                         .position
-                        .generate_moves_and_captures(self.engine.position.side);
+                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                     self.display_board();
                     continue;
                 }
@@ -222,7 +222,7 @@ impl CLI {
                     Ok(_) => {
                         self.engine
                             .position
-                            .generate_moves_and_captures(self.engine.position.side);
+                            .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                         self.display_board();
                         println!("FEN loaded successfully");
                     }
@@ -319,7 +319,7 @@ impl CLI {
 
                     self.engine
                         .position
-                        .generate_moves_and_captures(self.engine.position.side);
+                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
 
                     let game_result = self.engine.position.check_game_result();
                     self.print_result(game_result);

@@ -165,7 +165,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
 
             engine
                 .position
-                .generate_moves_and_captures(engine.position.side);
+                .generate_moves_and_captures(engine.position.side, |_, _, _| 0);
 
             // Find the move in the legal move list
             let mut found = false;

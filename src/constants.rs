@@ -20,6 +20,8 @@ pub const DEFAULT_MOVETIME_MS: u64 = 1000; // Value for fixed-time mode
 
 pub const SOFT_TO_HARD_LIMIT_RATIO: f64 = 0.75; // Hard limit is 1/30 of time remaining, plus increment
 
+pub const MAX_HISTORY_SCORE: isize = 10000;
+
 /// Maximum size for total moves in the move list.
 /// With 40 moves/position on average, allows for 50-ply depth.
 pub const MOVE_STACK: usize = 4000;

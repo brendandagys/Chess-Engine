@@ -3,9 +3,10 @@ use crate::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
         FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE, ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE,
         KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE, KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE,
-        MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES,
-        NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE,
-        QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
+        MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL,
+        NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE,
+        QUEEN_CAPTURE_SCORE, QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE,
+        ROOK_SCORE, ROW,
     },
     time::TimeManager,
     types::{BitBoard, Board, Game, GameResult, Move, Piece, Side, Square},
@@ -21,7 +22,6 @@ pub struct Position {
     pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
     pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
     pub board: Board,
-    history_table: [[isize; NUM_SQUARES]; NUM_SQUARES], // [from][to] = score
     pub pawn_engine_score: [usize; NUM_SIDES],
     pub piece_engine_score: [usize; NUM_SIDES],
     pub material_score: [usize; NUM_SIDES],
@@ -73,12 +73,12 @@ impl Position {
         ranks
     }
 
-    fn add_move(&mut self, from: Square, to: Square, move_count: &mut isize) {
+    fn add_move(&mut self, from: Square, to: Square, history_score: isize, move_count: &mut isize) {
         let move_ = Move {
             from,
             to,
             promote: None,
-            score: self.history_table[from as usize][to as usize],
+            score: history_score,
         };
 
         self.move_list[*move_count as usize] = Some(move_);
@@ -97,14 +97,20 @@ impl Position {
         *move_count += 1;
     }
 
-    fn add_pawn_promotion_moves(&mut self, from: Square, to: Square, move_count: &mut isize) {
+    fn add_pawn_promotion_moves(
+        &mut self,
+        from: Square,
+        to: Square,
+        history_score: isize,
+        move_count: &mut isize,
+    ) {
         // Add moves for all four promotion pieces: Queen, Rook, Bishop, Knight
         for promote_piece in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
             let move_ = Move {
                 from,
                 to,
                 promote: Some(promote_piece),
-                score: self.history_table[from as usize][to as usize],
+                score: history_score,
             };
             self.move_list[*move_count as usize] = Some(move_);
             *move_count += 1;
@@ -992,7 +998,7 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                 {
-                    self.add_move(Square::E1, Square::G1, move_count);
+                    self.add_move(Square::E1, Square::G1, 0, move_count);
                 }
                 // Queenside
                 if self.castle & 2 != 0
@@ -1000,7 +1006,7 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                 {
-                    self.add_move(Square::E1, Square::C1, move_count);
+                    self.add_move(Square::E1, Square::C1, 0, move_count);
                 }
             }
             Side::Black => {
@@ -1010,7 +1016,7 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                 {
-                    self.add_move(Square::E8, Square::G8, move_count);
+                    self.add_move(Square::E8, Square::G8, 0, move_count);
                 }
                 // Queenside
                 if self.castle & 8 != 0
@@ -1018,7 +1024,7 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                 {
-                    self.add_move(Square::E8, Square::C8, move_count);
+                    self.add_move(Square::E8, Square::C8, 0, move_count);
                 }
             }
         }
@@ -1046,7 +1052,10 @@ impl Position {
         }
     }
 
-    pub fn generate_moves_and_captures(&mut self, side: Side) {
+    pub fn generate_moves_and_captures<F>(&mut self, side: Side, get_history_score: F)
+    where
+        F: Fn(Side, Square, Square) -> isize,
+    {
         let mut left_pawn_captures;
         let mut right_pawn_captures;
         let mut unblocked_pawns;
@@ -1168,34 +1177,43 @@ impl Position {
 
                 // Check if this is a promotion
                 if self.ranks[side as usize][square_from as usize] == 6 {
+                    let square_from = square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square");
+
                     self.add_pawn_promotion_moves(
-                        square_from
-                            .try_into()
-                            .expect("Failed to convert square_from to Square"),
+                        square_from,
                         square_to,
+                        get_history_score(side, square_from, square_to),
                         &mut move_count,
                     );
                 } else {
+                    let square_from: Square = square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square");
+
                     self.add_move(
-                        square_from
-                            .try_into()
-                            .expect("Failed to convert square_from to Square"),
+                        square_from,
                         square_to,
+                        get_history_score(side, square_from, square_to),
                         &mut move_count,
                     );
 
+                    // Check double jump validity
                     if self.ranks[side as usize][square_from as usize] == 1
                         && self.board.value
                             [self.pawn_double_index[side as usize][square_from as usize] as usize]
                             == Piece::Empty
                     {
+                        let square_double_jump_to: Square = self.pawn_double_index[side as usize]
+                            [square_from as usize]
+                            .try_into()
+                            .expect("Failed to convert pawn double index to Square");
+
                         self.add_move(
-                            square_from
-                                .try_into()
-                                .expect("Failed to convert square_from to Square"),
-                            self.pawn_double_index[side as usize][square_from as usize]
-                                .try_into()
-                                .expect("Failed to convert pawn double index to Square"),
+                            square_from,
+                            square_double_jump_to,
+                            get_history_score(side, square_from, square_double_jump_to),
                             &mut move_count,
                         );
                     }
@@ -1240,17 +1258,17 @@ impl Position {
                 BitBoard(self.bit_knight_moves[square_from as usize].0 & !self.board.bit_all.0);
 
             while knight_moves.0 != 0 {
-                let square_to = knight_moves.next_bit_mut();
+                let square_from: Square = square_from
+                    .try_into()
+                    .expect("Failed to convert square_from to Square");
 
-                self.add_move(
-                    square_from
-                        .try_into()
-                        .expect("Failed to convert square_from to Square"),
-                    square_to
-                        .try_into()
-                        .expect("Failed to convert square_to to Square"),
-                    &mut move_count,
-                );
+                let square_to: Square = knight_moves
+                    .next_bit_mut()
+                    .try_into()
+                    .expect("Failed to convert square_to to Square");
+
+                let history_score = get_history_score(side, square_from, square_to);
+                self.add_move(square_from, square_to, history_score, &mut move_count);
             }
         }
 
@@ -1317,13 +1335,18 @@ impl Position {
                 while possible_moves.0 != 0 {
                     let square_to = possible_moves.next_bit_mut();
 
+                    let square_from: Square = square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square");
+
+                    let square_to: Square = square_to
+                        .try_into()
+                        .expect("Failed to convert square_to to Square");
+
                     self.add_move(
-                        square_from
-                            .try_into()
-                            .expect("Failed to convert square_from to Square"),
-                        square_to
-                            .try_into()
-                            .expect("Failed to convert square_to to Square"),
+                        square_from,
+                        square_to,
+                        get_history_score(side, square_from, square_to),
                         &mut move_count,
                     );
                 }
@@ -1339,15 +1362,19 @@ impl Position {
             BitBoard(self.bit_king_moves[king_square as usize].0 & !self.board.bit_all.0);
 
         while king_moves.0 != 0 {
-            let square_to = king_moves.next_bit_mut();
+            let square_from: Square = king_square
+                .try_into()
+                .expect("Failed to convert king_square to Square");
+
+            let square_to: Square = king_moves
+                .next_bit_mut()
+                .try_into()
+                .expect("Failed to convert square_to to Square");
 
             self.add_move(
-                king_square
-                    .try_into()
-                    .expect("Failed to convert king_square to Square"),
-                square_to
-                    .try_into()
-                    .expect("Failed to convert square_to to Square"),
+                square_from,
+                square_to,
+                get_history_score(side, square_from, square_to),
                 &mut move_count,
             );
         }
@@ -1571,7 +1598,7 @@ impl Position {
         }
 
         // Generate moves to check if any legal moves exist
-        self.generate_moves_and_captures(self.side);
+        self.generate_moves_and_captures(self.side, |_, _, _| 0);
 
         let mut has_legal_moves = false;
         for i in self.first_move[self.ply]..self.first_move[self.ply + 1] as isize {
@@ -2210,10 +2237,31 @@ impl Position {
         false
     }
 
+    fn update_history_table(
+        &self,
+        history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
+        depth: u16,
+        move_: Move,
+    ) {
+        let depth_sq = (depth as isize) * (depth as isize);
+        let current = history_table[self.side as usize][move_.from as usize][move_.to as usize];
+
+        // Use saturating approach to update history table
+        let bonus = depth_sq - current * depth_sq.abs() / MAX_HISTORY_SCORE;
+
+        history_table[self.side as usize][move_.from as usize][move_.to as usize] += bonus;
+    }
+
     /// Negamax search with alpha-beta pruning.
     /// Alpha is the lower bound (player's best guaranteed score).
     /// Beta is the upper bound (opponent's best guaranteed score).
-    pub fn search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
+    pub fn search(
+        &mut self,
+        mut alpha: i32,
+        beta: i32,
+        depth: u16,
+        history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
+    ) -> i32 {
         // Check for draw by repetition
         if self.ply > 0 && self.search_backward_for_identical_position() {
             return 0;
@@ -2245,7 +2293,10 @@ impl Position {
         let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
 
         // Generate all legal moves
-        self.generate_moves_and_captures(self.side);
+        self.generate_moves_and_captures(self.side, |side, from, to| {
+            history_table[side as usize][from as usize][to as usize]
+        });
+
         let move_list_start = self.first_move[self.ply] as usize;
         let move_list_end = self.first_move[self.ply + 1] as usize;
 
@@ -2274,7 +2325,7 @@ impl Position {
             legal_moves_count += 1;
 
             // Recursively search with negated window
-            let score = -self.search(-beta, -alpha, depth - 1);
+            let score = -self.search(-beta, -alpha, depth - 1, history_table);
 
             self.take_back_move();
 
@@ -2289,6 +2340,14 @@ impl Position {
 
             // Beta cutoff
             if score >= beta {
+                let is_capture = current_move.to.as_bit() & self.board.bit_all.0 != 0;
+                let is_promotion = current_move.promote.is_some();
+
+                // Only update history table for quiet moves
+                if !is_capture && !is_promotion {
+                    self.update_history_table(history_table, depth, current_move);
+                }
+
                 return best_score; // Fail-soft beta-cutoff
             }
         }
@@ -2357,7 +2416,6 @@ impl Position {
             ply: 0,
             ply_from_start_of_game: 0,
             board: Board::new(),
-            history_table: [[0; NUM_SQUARES]; NUM_SQUARES],
             pawn_engine_score: [0; NUM_SIDES],
             piece_engine_score: [0; NUM_SIDES],
             material_score: [0; NUM_SIDES],

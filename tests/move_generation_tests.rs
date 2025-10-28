@@ -35,7 +35,7 @@ fn initial_position_generates_20_white_moves() {
     let mut position = Position::new(TimeManager::default());
     reset_move_state(&mut position);
 
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert_eq!(moves.len(), 20);
@@ -49,7 +49,7 @@ fn initial_position_generates_20_black_moves() {
     let mut position = Position::new(TimeManager::default());
     reset_move_state(&mut position);
 
-    position.generate_moves_and_captures(Side::Black);
+    position.generate_moves_and_captures(Side::Black, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert_eq!(moves.len(), 20);
@@ -218,7 +218,7 @@ fn castling_moves_included_when_rights_available() {
     position.castle = 0b0011;
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E1, Square::G1)));
@@ -242,7 +242,7 @@ fn castling_moves_excluded_when_rights_unavailable() {
     // Uncomment to visualize the board state during debugging:
     // position.display_board(false);
 
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -298,7 +298,7 @@ fn pawn_promotion_moves_include_forward_and_capture() {
         .add_piece(Side::Black, Piece::Knight, Square::B8);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::A7, Square::A8)));
@@ -317,7 +317,7 @@ fn blocked_pawn_cannot_advance() {
         .add_piece(Side::Black, Piece::Pawn, Square::E3);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(!moves.contains(&(Square::E2, Square::E3)));
@@ -336,7 +336,7 @@ fn white_pawn_single_push_from_starting_position() {
         .add_piece(Side::White, Piece::Pawn, Square::E2);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E2, Square::E3)));
@@ -351,7 +351,7 @@ fn black_pawn_single_push_from_starting_position() {
         .add_piece(Side::Black, Piece::Pawn, Square::E7);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::Black);
+    position.generate_moves_and_captures(Side::Black, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E7, Square::E6)));
@@ -369,7 +369,7 @@ fn pawn_double_push_blocked() {
         .add_piece(Side::Black, Piece::Pawn, Square::E4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E2, Square::E3)));
@@ -384,7 +384,7 @@ fn pawn_cannot_double_push_from_non_starting_rank() {
         .add_piece(Side::White, Piece::Pawn, Square::E3);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E3, Square::E4)));
@@ -405,7 +405,7 @@ fn pawn_diagonal_captures() {
         .add_piece(Side::Black, Piece::Pawn, Square::F5);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E4, Square::D5)));
@@ -427,7 +427,7 @@ fn pawn_cannot_capture_own_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::F5);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(!moves.contains(&(Square::E4, Square::D5)));
@@ -446,7 +446,7 @@ fn pawn_edge_file_captures() {
         .add_piece(Side::Black, Piece::Pawn, Square::B5);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::A4, Square::B5)));
@@ -469,7 +469,7 @@ fn pawn_promotion_all_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::E7);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -503,7 +503,7 @@ fn pawn_promotion_with_capture() {
         .add_piece(Side::Black, Piece::Rook, Square::F8);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E7, Square::E8)));
@@ -527,7 +527,7 @@ fn black_pawn_promotion() {
         .add_piece(Side::Black, Piece::Pawn, Square::E2);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::Black);
+    position.generate_moves_and_captures(Side::Black, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E2, Square::E1)));
@@ -549,7 +549,7 @@ fn white_pawn_on_7th_rank_can_only_promote() {
         .add_piece(Side::White, Piece::Pawn, Square::D7);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let pawn_moves: Vec<_> = moves
@@ -574,7 +574,7 @@ fn knight_generates_all_moves_from_center() {
         .add_piece(Side::White, Piece::Knight, Square::E4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let expected_knight_moves = vec![
@@ -605,7 +605,7 @@ fn knight_moves_from_corner() {
         .add_piece(Side::White, Piece::Knight, Square::A1);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let expected_moves = vec![(Square::A1, Square::B3), (Square::A1, Square::C2)];
@@ -629,7 +629,7 @@ fn knight_cannot_capture_own_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::F6);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(!moves.contains(&(Square::E4, Square::D6)));
@@ -650,7 +650,7 @@ fn knight_can_capture_enemy_pieces() {
         .add_piece(Side::Black, Piece::Pawn, Square::F6);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E4, Square::D6)));
@@ -669,7 +669,7 @@ fn bishop_generates_diagonal_moves() {
         .add_piece(Side::White, Piece::Bishop, Square::D4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -709,7 +709,7 @@ fn bishop_blocked_by_own_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::C3);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -735,7 +735,7 @@ fn bishop_captures_enemy_piece_but_cannot_move_beyond() {
         .add_piece(Side::Black, Piece::Pawn, Square::F6);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -757,7 +757,7 @@ fn rook_generates_horizontal_and_vertical_moves() {
         .add_piece(Side::White, Piece::Rook, Square::D4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -798,7 +798,7 @@ fn rook_blocked_by_own_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::F4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -822,7 +822,7 @@ fn rook_captures_enemy_but_cannot_move_beyond() {
         .add_piece(Side::Black, Piece::Pawn, Square::D6);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -842,7 +842,7 @@ fn queen_generates_rook_and_bishop_moves() {
         .add_piece(Side::White, Piece::Queen, Square::D4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -889,7 +889,7 @@ fn queen_blocked_on_all_directions() {
         .add_piece(Side::White, Piece::Pawn, Square::C5);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let queen_moves: Vec<_> = moves
@@ -920,7 +920,7 @@ fn king_generates_all_adjacent_moves() {
         .add_piece(Side::White, Piece::King, Square::D4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let expected_moves = vec![
@@ -960,7 +960,7 @@ fn king_cannot_capture_own_pieces() {
         .add_piece(Side::White, Piece::Pawn, Square::E4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(!moves.contains(&(Square::D4, Square::D5)));
@@ -984,7 +984,7 @@ fn king_can_capture_enemy_pieces() {
         .add_piece(Side::Black, Piece::Pawn, Square::E4);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::D4, Square::D5)));
@@ -1002,7 +1002,7 @@ fn king_moves_from_corner() {
         .add_piece(Side::White, Piece::King, Square::A1);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     let expected_moves = vec![
@@ -1029,7 +1029,7 @@ fn white_kingside_castle_clear_path() {
     position.castle = 0b0001; // White kingside only
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E1, Square::G1)));
@@ -1044,7 +1044,7 @@ fn white_queenside_castle_clear_path() {
     position.castle = 0b0010; // White queenside only
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E1, Square::C1)));
@@ -1059,7 +1059,7 @@ fn black_kingside_castle_clear_path() {
     position.castle = 0b0100; // Black kingside only
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::Black);
+    position.generate_moves_and_captures(Side::Black, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E8, Square::G8)));
@@ -1074,7 +1074,7 @@ fn black_queenside_castle_clear_path() {
     position.castle = 0b1000; // Black queenside only
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::Black);
+    position.generate_moves_and_captures(Side::Black, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E8, Square::C8)));
@@ -1092,7 +1092,7 @@ fn castle_blocked_by_piece() {
     position.castle = 0b0001;
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(!moves.contains(&(Square::E1, Square::G1)));
@@ -1110,7 +1110,7 @@ fn both_castles_available() {
     position.castle = 0b0011; // Both white castles
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
     assert!(moves.contains(&(Square::E1, Square::G1)));
@@ -1147,7 +1147,7 @@ fn en_passant_capture_after_double_pawn_push() {
     position.first_move[0] = 0;
     position.move_list.iter_mut().for_each(|slot| *slot = None);
 
-    position.generate_moves_and_captures(position.side);
+    position.generate_moves_and_captures(position.side, |_, _, _| 0);
     let moves = move_pairs(&position);
 
     assert!(moves.contains(&(Square::E5, Square::D6)));
@@ -1173,7 +1173,7 @@ fn black_en_passant_capture() {
     position.first_move[0] = 0;
     position.move_list.iter_mut().for_each(|slot| *slot = None);
 
-    position.generate_moves_and_captures(position.side);
+    position.generate_moves_and_captures(position.side, |_, _, _| 0);
     let moves = move_pairs(&position);
 
     assert!(moves.contains(&(Square::E4, Square::D3)));
@@ -1226,7 +1226,7 @@ fn en_passant_both_sides_corrected() {
     position.first_move[0] = 0;
     position.move_list.iter_mut().for_each(|slot| *slot = None);
 
-    position.generate_moves_and_captures(position.side);
+    position.generate_moves_and_captures(position.side, |_, _, _| 0);
     let moves = move_pairs(&position);
 
     assert!(moves.contains(&(Square::B4, Square::A5)));
@@ -1320,7 +1320,7 @@ fn multiple_pieces_same_type_generate_independently() {
         .add_piece(Side::White, Piece::Knight, Square::G1);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -1343,7 +1343,7 @@ fn empty_board_except_kings_generates_king_moves_only() {
     let mut position = empty_position_with_kings(Side::White);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -1366,7 +1366,7 @@ fn pinned_piece_scenarios() {
         .add_piece(Side::Black, Piece::Rook, Square::E8);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 
@@ -1413,7 +1413,7 @@ fn all_pieces_blocked_generates_only_king_moves() {
         .add_piece(Side::White, Piece::Pawn, Square::D2);
 
     reset_move_state(&mut position);
-    position.generate_moves_and_captures(Side::White);
+    position.generate_moves_and_captures(Side::White, |_, _, _| 0);
 
     let moves = move_pairs(&position);
 

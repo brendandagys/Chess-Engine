@@ -70,7 +70,7 @@ mod basic_search {
             let mut position = position_from_fen(fen);
             position.ply = 0;
             position.first_move[0] = 0;
-            position.generate_moves_and_captures(position.side);
+            position.generate_moves_and_captures(position.side, |_, _, _| 0);
 
             let mut found = false;
             for i in 0..position.first_move[1] as usize {
@@ -327,7 +327,7 @@ mod move_ordering {
         engine.position.nodes = 0;
         engine
             .position
-            .generate_moves_and_captures(engine.position.side);
+            .generate_moves_and_captures(engine.position.side, |_, _, _| 0);
 
         // Verify hash move is in the move list with high score
         if let Some(hash_from) = first_move {
@@ -351,7 +351,7 @@ mod move_ordering {
 
         position.ply = 0;
         position.first_move[0] = 0;
-        position.generate_moves_and_captures(position.side);
+        position.generate_moves_and_captures(position.side, |_, _, _| 0);
 
         // Check that captures have higher scores than non-captures
         let mut capture_score = None;
