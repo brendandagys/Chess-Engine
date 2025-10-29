@@ -1597,13 +1597,11 @@ impl Position {
             return GameResult::DrawByInsufficientMaterial;
         }
 
-        // Generate moves to check if any legal moves exist
-        self.generate_moves_and_captures(self.side, |_, _, _| 0);
-
+        // Check for legal moves for the player-now-to-move
         let mut has_legal_moves = false;
-        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] as isize {
+        for i in self.first_move[self.ply]..self.first_move[1 + self.ply] as isize {
             if let Some(mv) = self.move_list[i as usize] {
-                if self.make_move_with_promotion(mv.from, mv.to, mv.promote) {
+                if self.make_move(mv.from, mv.to, mv.promote) {
                     self.take_back_move();
                     has_legal_moves = true;
                     break;
@@ -1649,20 +1647,9 @@ impl Position {
         None
     }
 
-    /// Make a move and return success state.
-    /// If unsuccessful, the move will be undone.
-    pub fn make_move(&mut self, from: Square, to: Square) -> bool {
-        self.make_move_with_promotion(from, to, None)
-    }
-
     /// Make a move with optional promotion piece and return success state.
     /// If unsuccessful, the move will be undone.
-    pub fn make_move_with_promotion(
-        &mut self,
-        from: Square,
-        to: Square,
-        promote: Option<Piece>,
-    ) -> bool {
+    pub fn make_move(&mut self, from: Square, to: Square, promote: Option<Piece>) -> bool {
         // Check for castling
         if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
             // Cannot castle out of check
@@ -2099,8 +2086,7 @@ impl Position {
             print!(" ");
             Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
             // NOTE: Hash table doesn't currently store promotion piece, so we use None which defaults to Queen
-            if !self.make_move_with_promotion(self.hash_from.unwrap(), self.hash_to.unwrap(), None)
-            {
+            if !self.make_move(self.hash_from.unwrap(), self.hash_to.unwrap(), None) {
                 // Move failed (shouldn't happen with hash moves, but be safe)
                 break;
             }
@@ -2163,11 +2149,7 @@ impl Position {
             let current_move = self.move_list[move_index].unwrap();
 
             // Try to make the move
-            if !self.make_move_with_promotion(
-                current_move.from,
-                current_move.to,
-                current_move.promote,
-            ) {
+            if !self.make_move(current_move.from, current_move.to, current_move.promote) {
                 // Move is illegal (leaves king in check)
                 continue;
             }
@@ -2329,11 +2311,7 @@ impl Position {
             let current_move = self.move_list[move_index].unwrap();
 
             // Try to make the move
-            if !self.make_move_with_promotion(
-                current_move.from,
-                current_move.to,
-                current_move.promote,
-            ) {
+            if !self.make_move(current_move.from, current_move.to, current_move.promote) {
                 // Move is illegal (leaves king in check)
                 continue;
             }
@@ -2422,7 +2400,7 @@ impl Position {
         let (bit_queen_moves, bit_rook_moves, bit_bishop_moves) =
             Self::get_queen_rook_bishop_moves();
 
-        let mut mut_position = Self {
+        let mut position = Self {
             // Dynamic
             move_list: [None; MOVE_STACK],
             first_move,
@@ -2471,12 +2449,8 @@ impl Position {
             ranks: Self::get_ranks(),
         };
 
-        // Initialize hash with castle rights (all castling available: 0b1111)
-        mut_position.board.hash.update_castle_rights(0, 0b1111);
-        // White to move by default, so no need to toggle side-to-move
-
-        mut_position.set_material_scores();
-        mut_position
+        position.set_material_scores();
+        position
     }
 
     /// Load a position from a FEN (Forsyth-Edwards Notation) string.

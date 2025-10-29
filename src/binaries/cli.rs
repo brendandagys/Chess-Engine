@@ -52,9 +52,6 @@ impl CLI {
         match result {
             GameResult::InProgress => {}
             GameResult::Checkmate(winner) => {
-                self.engine
-                    .position
-                    .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                 self.display_board();
                 println!("\nGAME OVER");
 
@@ -103,11 +100,8 @@ impl CLI {
 
                 let has_legal_moves = self.make_computer_move();
 
-                self.engine
-                    .position
-                    .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
-
                 let game_result = self.engine.position.check_game_result();
+
                 if has_legal_moves {
                     self.print_result(game_result);
                 } else {
@@ -119,10 +113,6 @@ impl CLI {
 
                 continue;
             }
-
-            self.engine
-                .position
-                .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
 
             print!("\nFrom square OR command > ");
             io::stdout().flush().unwrap();
@@ -194,9 +184,6 @@ impl CLI {
                 }
                 "switch" => {
                     self.engine.position.side = self.engine.position.side.opponent();
-                    self.engine
-                        .position
-                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                     continue;
                 }
                 "undo" => {
@@ -206,9 +193,7 @@ impl CLI {
                     }
                     self.engine.computer_side = None;
                     self.engine.position.take_back_move();
-                    self.engine
-                        .position
-                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
+                    self.engine.generate_moves();
                     self.display_board();
                     continue;
                 }
@@ -220,9 +205,6 @@ impl CLI {
                 let fen_str = &command[4..];
                 match self.engine.position.from_fen(fen_str) {
                     Ok(_) => {
-                        self.engine
-                            .position
-                            .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
                         self.display_board();
                         println!("FEN loaded successfully");
                     }
@@ -308,19 +290,12 @@ impl CLI {
 
             if let Some(move_idx) = self.engine.parse_move_string(&move_str) {
                 if let Some(mv) = self.engine.position.move_list[move_idx] {
-                    if !self
-                        .engine
-                        .position
-                        .make_move_with_promotion(mv.from, mv.to, mv.promote)
-                    {
+                    if !self.engine.position.make_move(mv.from, mv.to, mv.promote) {
                         println!("ILLEGAL MOVE!");
                         continue;
                     }
 
-                    self.engine
-                        .position
-                        .generate_moves_and_captures(self.engine.position.side, |_, _, _| 0);
-
+                    self.engine.generate_moves();
                     let game_result = self.engine.position.check_game_result();
                     self.print_result(game_result);
                     self.display_board();
@@ -395,7 +370,8 @@ impl CLI {
             return false;
         };
 
-        self.engine.position.make_move(hash_from, hash_to);
+        self.engine.position.make_move(hash_from, hash_to, None);
+        self.engine.generate_moves();
 
         let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
 

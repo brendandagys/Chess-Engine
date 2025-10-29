@@ -1135,11 +1135,11 @@ fn en_passant_capture_after_double_pawn_push() {
     let mut position = Position::new(TimeManager::default());
 
     // This test demonstrates en passant after a double pawn push
-    // but requires careful coordination between make_move and generate_moves
-    assert!(position.make_move(Square::E2, Square::E4));
-    assert!(position.make_move(Square::A7, Square::A6));
-    assert!(position.make_move(Square::E4, Square::E5));
-    assert!(position.make_move(Square::D7, Square::D5));
+    // but requires careful coordination between make_move and generate_moves_and_captures
+    assert!(position.make_move(Square::E2, Square::E4, None));
+    assert!(position.make_move(Square::A7, Square::A6, None));
+    assert!(position.make_move(Square::E4, Square::E5, None));
+    assert!(position.make_move(Square::D7, Square::D5, None));
 
     // Reset move list but preserve game history
     position.ply = 0;
@@ -1159,13 +1159,13 @@ fn black_en_passant_capture() {
     let mut position = Position::new(TimeManager::default());
 
     // White pawn advances two squares
-    assert!(position.make_move(Square::A2, Square::A3));
-    assert!(position.make_move(Square::E7, Square::E5));
-    assert!(position.make_move(Square::A3, Square::A4));
-    assert!(position.make_move(Square::E5, Square::E4));
+    assert!(position.make_move(Square::A2, Square::A3, None));
+    assert!(position.make_move(Square::E7, Square::E5, None));
+    assert!(position.make_move(Square::A3, Square::A4, None));
+    assert!(position.make_move(Square::E5, Square::E4, None));
 
     // White pawn on d2 advances to d4, black can capture en passant
-    assert!(position.make_move(Square::D2, Square::D4));
+    assert!(position.make_move(Square::D2, Square::D4, None));
 
     // Reset move list but preserve game history
     position.ply = 0;
@@ -1184,10 +1184,10 @@ fn en_passant_in_captures_only() {
     ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
-    assert!(position.make_move(Square::E2, Square::E4));
-    assert!(position.make_move(Square::A7, Square::A6));
-    assert!(position.make_move(Square::E4, Square::E5));
-    assert!(position.make_move(Square::D7, Square::D5));
+    assert!(position.make_move(Square::E2, Square::E4, None));
+    assert!(position.make_move(Square::A7, Square::A6, None));
+    assert!(position.make_move(Square::E4, Square::E5, None));
+    assert!(position.make_move(Square::D7, Square::D5, None));
 
     // Reset move list but preserve game history
     position.ply = 0;
@@ -1208,14 +1208,14 @@ fn en_passant_both_sides_corrected() {
     let mut position = Position::new(TimeManager::default());
 
     // Set up a scenario where black has pawns on both sides
-    assert!(position.make_move(Square::E2, Square::E4));
-    assert!(position.make_move(Square::D7, Square::D5));
-    assert!(position.make_move(Square::E4, Square::E5));
-    assert!(position.make_move(Square::D5, Square::D4));
-    assert!(position.make_move(Square::A2, Square::A4));
-    assert!(position.make_move(Square::D4, Square::D3));
-    assert!(position.make_move(Square::B2, Square::B4));
-    assert!(position.make_move(Square::A7, Square::A5));
+    assert!(position.make_move(Square::E2, Square::E4, None));
+    assert!(position.make_move(Square::D7, Square::D5, None));
+    assert!(position.make_move(Square::E4, Square::E5, None));
+    assert!(position.make_move(Square::D5, Square::D4, None));
+    assert!(position.make_move(Square::A2, Square::A4, None));
+    assert!(position.make_move(Square::D4, Square::D3, None));
+    assert!(position.make_move(Square::B2, Square::B4, None));
+    assert!(position.make_move(Square::A7, Square::A5, None));
 
     // Now white has pawn on b4, black just moved a7-a5
     // Black pawn on a5 can be captured en passant by white pawn on b4

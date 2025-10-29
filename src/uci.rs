@@ -163,9 +163,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
 
             let (from, to, promote) = Engine::move_from_uci_string(move_str)?;
 
-            engine
-                .position
-                .generate_moves_and_captures(engine.position.side, |_, _, _| 0);
+            engine.generate_moves();
 
             // Find the move in the legal move list
             let mut found = false;
@@ -175,7 +173,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
                 if let Some(mv) = engine.position.move_list[i] {
                     if mv.from == from && mv.to == to && mv.promote == promote {
                         // Make the move
-                        if !engine.position.make_move(from, to) {
+                        if !engine.position.make_move(from, to, None) {
                             return Err(format!("Illegal move: {}", move_str));
                         }
                         found = true;

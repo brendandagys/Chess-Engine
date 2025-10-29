@@ -42,7 +42,7 @@ fn perft(position: &mut Position, depth: usize) -> u64 {
             let promote = move_.promote;
 
             // Make the move
-            if position.make_move_with_promotion(from, to, promote) {
+            if position.make_move(from, to, promote) {
                 // Recursively count nodes at depth - 1
                 nodes += perft(position, depth - 1);
 
@@ -86,7 +86,7 @@ fn perft_divide(position: &mut Position, depth: usize) -> u64 {
             let to = move_.to;
             let promote = move_.promote;
 
-            if position.make_move_with_promotion(from, to, promote) {
+            if position.make_move(from, to, promote) {
                 let nodes = if depth > 1 {
                     perft(position, depth - 1)
                 } else {

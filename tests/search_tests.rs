@@ -290,7 +290,7 @@ mod repetition_detection {
         );
 
         // Make a move
-        let _ = position.make_move(Square::E2, Square::E4);
+        let _ = position.make_move(Square::E2, Square::E4, None);
         let reps_after_move = position.reps();
 
         // After one move, should not have repetitions
@@ -604,7 +604,7 @@ mod principal_variation {
 
         // Try to make the PV moves
         if let (Some(from), Some(to)) = (engine.position.hash_from, engine.position.hash_to) {
-            let move_legal = engine.position.make_move(from, to);
+            let move_legal = engine.position.make_move(from, to, None);
             if move_legal {
                 engine.position.take_back_move();
                 // PV move was legal

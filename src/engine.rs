@@ -60,7 +60,7 @@ impl Engine {
         let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
         let depth = depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
-        Engine {
+        let mut engine = Engine {
             position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
             search_settings: SearchSettings {
                 wtime,
@@ -72,23 +72,26 @@ impl Engine {
             },
             computer_side: None,
             history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
-        }
+        };
+
+        engine.generate_moves();
+        engine
     }
 
     pub fn new_game(&mut self) {
-        let time_manager = TimeManager::new(
+        self.position = Position::new(TimeManager::new(
             self.search_settings.wtime,
             self.search_settings.btime,
             self.search_settings.winc,
             self.search_settings.binc,
             self.search_settings.movetime,
             true,
-        );
+        ));
 
         self.computer_side = None;
+    }
 
-        self.position = Position::new(time_manager);
-
+    pub fn generate_moves(&mut self) {
         self.position
             .generate_moves_and_captures(self.position.side, |_, _, _| 0);
     }
@@ -274,9 +277,6 @@ impl Engine {
 
     /// Parse a move in algebraic notation (e2e4) and return the index in the move list
     pub fn parse_move_string(&mut self, move_str: &str) -> Option<usize> {
-        self.position
-            .generate_moves_and_captures(self.position.side, |_, _, _| 0);
-
         if move_str.len() < 4 {
             return None;
         }
