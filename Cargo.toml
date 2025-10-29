@@ -17,8 +17,8 @@ api = ["serde", "serde_json"]
 
 [[bin]]
 name = "chess_engine_cli"
-path = "src/main.rs"
+path = "src/binaries/cli.rs"
 
 [[bin]]
 name = "chess_engine_uci"
-path = "src/uci_main.rs"
+path = "src/binaries/uci.rs"
