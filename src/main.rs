@@ -99,7 +99,7 @@ impl CLI {
             // Computer's turn
             if self.engine.computer_side == Some(self.engine.position.side) {
                 println!("\nComputer is thinking...");
-                println!("\nPLY         NODES     SCORE      PV");
+                println!("\nDEPTH         NODES     SCORE      PV");
 
                 let has_legal_moves = self.make_computer_move();
 
@@ -373,7 +373,7 @@ impl CLI {
     fn make_computer_move(&mut self) -> bool {
         self.engine
             .think(Some(|depth, score, position: &mut Position| {
-                print!("{:>3}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
+                print!("{:>5}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
 
                 // Display best move
                 if let (Some(from), Some(to)) =
