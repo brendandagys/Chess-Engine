@@ -78,10 +78,7 @@ pub fn reset_move_state(position: &mut Position) {
 
 pub fn position_from_fen(fen: &str) -> Position {
     ensure_zobrist_initialized();
-    let mut position = Position::new(TimeManager::default());
-    position
-        .from_fen(fen)
-        .expect(&format!("Failed to load FEN: {}", fen));
+    let mut position = Position::from_fen(fen).expect(&format!("Failed to load FEN: {}", fen));
     position.set_material_scores();
     reset_move_state(&mut position);
     position.display_board(false);
@@ -91,10 +88,7 @@ pub fn position_from_fen(fen: &str) -> Position {
 pub fn engine_from_fen(fen: &str, depth: u16) -> Engine {
     ensure_zobrist_initialized();
     let mut engine = Engine::new(None, None, None, None, None, Some(depth));
-    engine
-        .position
-        .from_fen(fen)
-        .expect(&format!("Failed to load FEN: {}", fen));
+    engine.position = Position::from_fen(fen).expect(&format!("Failed to load FEN: {}", fen));
     engine.position.set_material_scores();
     reset_move_state(&mut engine.position);
     engine.position.display_board(false);

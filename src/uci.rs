@@ -128,10 +128,8 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
 
     // Parse position type (startpos or fen)
     if parts[index] == "startpos" {
-        engine
-            .position
-            .from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
-            .map_err(|e| e.to_string())?;
+        engine.position =
+            Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
         index += 1;
     } else if parts[index] == "fen" {
         index += 1;
@@ -149,7 +147,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
         }
 
         let fen = fen_parts.join(" ");
-        engine.position.from_fen(&fen).map_err(|e| e.to_string())?;
+        engine.position = Position::from_fen(&fen).unwrap();
     } else {
         return Err(format!("Unknown position type: {}", parts[index]));
     }

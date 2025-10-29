@@ -61,6 +61,12 @@ pub struct Position {
     ranks: [[u8; NUM_SQUARES]; NUM_SIDES],
 }
 
+impl Default for Position {
+    fn default() -> Self {
+        Self::new(TimeManager::default())
+    }
+}
+
 impl Position {
     fn get_ranks() -> [[u8; NUM_SQUARES]; NUM_SIDES] {
         let mut ranks = [[0; NUM_SQUARES]; NUM_SIDES];
@@ -2478,8 +2484,9 @@ impl Position {
     /// // Position after 1.e4
     /// position.from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
     /// ```
-    pub fn from_fen(&mut self, fen: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.board = Board::empty();
+    pub fn from_fen(fen: &str) -> Result<Position, Box<dyn std::error::Error>> {
+        let mut position = Position::default();
+        position.board = Board::empty();
 
         let parts: Vec<&str> = fen.split(' ').collect();
         if parts.is_empty() {
@@ -2530,7 +2537,7 @@ impl Position {
                     _ => return Err(format!("Invalid piece character: {}", ch).into()),
                 };
 
-                self.board.add_piece(side, piece, square);
+                position.board.add_piece(side, piece, square);
                 file += 1;
             }
 
@@ -2548,10 +2555,10 @@ impl Position {
         if parts.len() > 1 {
             match parts[1] {
                 "w" => {
-                    self.side = Side::White;
+                    position.side = Side::White;
                 }
                 "b" => {
-                    self.side = Side::Black;
+                    position.side = Side::Black;
                 }
                 _ => {}
             }
@@ -2559,35 +2566,35 @@ impl Position {
 
         // Parse castling rights
         if parts.len() > 2 {
-            self.castle = 0;
+            position.castle = 0;
             for ch in parts[2].chars() {
                 match ch {
                     'K' => {
-                        if self.board.bit_pieces[Side::White as usize][Piece::King as usize]
+                        if position.board.bit_pieces[Side::White as usize][Piece::King as usize]
                             .is_bit_set(Square::E1)
                         {
-                            self.castle |= 1;
+                            position.castle |= 1;
                         }
                     }
                     'Q' => {
-                        if self.board.bit_pieces[Side::White as usize][Piece::King as usize]
+                        if position.board.bit_pieces[Side::White as usize][Piece::King as usize]
                             .is_bit_set(Square::E1)
                         {
-                            self.castle |= 2;
+                            position.castle |= 2;
                         }
                     }
                     'k' => {
-                        if self.board.bit_pieces[Side::Black as usize][Piece::King as usize]
+                        if position.board.bit_pieces[Side::Black as usize][Piece::King as usize]
                             .is_bit_set(Square::E8)
                         {
-                            self.castle |= 4;
+                            position.castle |= 4;
                         }
                     }
                     'q' => {
-                        if self.board.bit_pieces[Side::Black as usize][Piece::King as usize]
+                        if position.board.bit_pieces[Side::Black as usize][Piece::King as usize]
                             .is_bit_set(Square::E8)
                         {
-                            self.castle |= 8;
+                            position.castle |= 8;
                         }
                     }
                     '-' => {}
@@ -2612,8 +2619,8 @@ impl Position {
                     }
 
                     // En passant square should only be on rank 3 (for white) or rank 6 (for black)
-                    if (self.side == Side::White && rank != '6')
-                        || (self.side == Side::Black && rank != '3')
+                    if (position.side == Side::White && rank != '6')
+                        || (position.side == Side::Black && rank != '3')
                     {
                         return Err(format!(
                             "Invalid en passant square {} for side to move",
@@ -2628,7 +2635,7 @@ impl Position {
 
                     // If white to move, black pawn moved (ep_square is rank 6, pawn is on rank 5)
                     // If black to move, white pawn moved (ep_square is rank 3, pawn is on rank 4)
-                    let (pawn_to, pawn_from) = if self.side == Side::White {
+                    let (pawn_to, pawn_from) = if position.side == Side::White {
                         // Black pawn moved from rank 7 to rank 5, ep_square is rank 6
                         let pawn_square = file_index + 4 * 8; // rank 5 (0-indexed: rank 4)
                         let from_square = file_index + 6 * 8; // rank 7 (0-indexed: rank 6)
@@ -2665,14 +2672,14 @@ impl Position {
         if parts.len() > 4 {
             match parts[4].parse::<u8>() {
                 Ok(halfmove) => {
-                    self.fifty = halfmove;
+                    position.fifty = halfmove;
                 }
                 Err(_) => {
                     return Err(format!("Invalid halfmove clock: {}", parts[4]).into());
                 }
             }
         } else {
-            self.fifty = 0;
+            position.fifty = 0;
         }
 
         // Parse fullmove number (field 6) - increments after Black's move
@@ -2684,8 +2691,8 @@ impl Position {
                         return Err("Fullmove number must be at least 1".into());
                     }
                     // Convert fullmove to ply: (fullmove - 1) * 2 + (0 if white to move, 1 if black)
-                    self.ply_from_start_of_game =
-                        (fullmove - 1) * 2 + if self.side == Side::Black { 1 } else { 0 };
+                    position.ply_from_start_of_game =
+                        (fullmove - 1) * 2 + if position.side == Side::Black { 1 } else { 0 };
                 }
                 Err(_) => {
                     return Err(format!("Invalid fullmove number: {}", parts[5]).into());
@@ -2693,39 +2700,40 @@ impl Position {
             }
         } else {
             // Default to move 1 if not specified
-            self.ply_from_start_of_game = if self.side == Side::Black { 1 } else { 0 };
+            position.ply_from_start_of_game = if position.side == Side::Black { 1 } else { 0 };
         }
 
         // Now that ply_from_start_of_game is set, we can create the synthetic game_list entry for en passant
         if let Some((pawn_from, pawn_to)) = ep_game_entry {
-            self.game_list[self.ply_from_start_of_game] = Some(Game {
+            position.game_list[position.ply_from_start_of_game] = Some(Game {
                 from: pawn_from,
                 to: pawn_to,
                 promote: None,
                 capture: Piece::Empty, // TODO: Is this why guards were needed for search tests?
-                fifty: self.fifty,
-                castle: self.castle,
-                hash: self.board.hash.current_key,
+                fifty: position.fifty,
+                castle: position.castle,
+                hash: position.board.hash.current_key,
                 en_passant_file: Some(COLUMN[pawn_to as usize]),
             });
         }
 
         // Initialize hash with castle rights
-        self.board.hash.update_castle_rights(0, self.castle);
+        position.board.hash.update_castle_rights(0, position.castle);
 
         // Initialize hash with side-to-move (if Black to move, toggle the hash)
-        if self.side == Side::Black {
-            self.board.hash.toggle_side_to_move();
+        if position.side == Side::Black {
+            position.board.hash.toggle_side_to_move();
         }
 
         // Initialize hash with en passant file if present
         if let Some((_, pawn_to)) = ep_game_entry {
-            self.board
+            position
+                .board
                 .hash
                 .update_en_passant(None, Some(COLUMN[pawn_to as usize]));
         }
 
-        Ok(())
+        Ok(position)
     }
 
     /// Generate and display a FEN (Forsyth-Edwards Notation) string from the current position.

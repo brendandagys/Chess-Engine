@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::engine::{Engine, SearchSettings};
+use crate::position::Position;
 use crate::types::Square;
 
 #[cfg_attr(feature = "api", derive(Serialize, Deserialize))]
@@ -41,10 +42,8 @@ pub fn analyze_position(request: AnalyzeRequest) -> Result<AnalyzeResponse, Stri
         request.depth,
     );
 
-    engine
-        .position
-        .from_fen(&request.fen)
-        .map_err(|e| format!("Invalid FEN: {}", e))?;
+    engine.position =
+        Position::from_fen(&request.fen).map_err(|e| format!("Invalid FEN: {}", e))?;
 
     // Generate moves to validate position is legal
     engine
@@ -67,7 +66,7 @@ pub fn analyze_position(request: AnalyzeRequest) -> Result<AnalyzeResponse, Stri
         .map_err(|e| format!("Failed to parse best move: {}", e))?;
 
     // Make the move on a copy of the position to get the resulting FEN
-    if !engine.position.make_move(from, to) {
+    if !engine.position.make_move(from, to, promote) {
         return Err("Failed to make best move".to_string());
     }
 

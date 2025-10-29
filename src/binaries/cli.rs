@@ -203,8 +203,9 @@ impl CLI {
             // COMMANDS WITH PARAMETERS
             if command.starts_with("fen ") {
                 let fen_str = &command[4..];
-                match self.engine.position.from_fen(fen_str) {
-                    Ok(_) => {
+                match Position::from_fen(fen_str) {
+                    Ok(position) => {
+                        self.engine.position = position;
                         self.display_board();
                         println!("FEN loaded successfully");
                     }
