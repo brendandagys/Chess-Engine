@@ -273,7 +273,10 @@ impl Engine {
     }
 
     /// Parse a move in algebraic notation (e2e4) and return the index in the move list
-    pub fn parse_move_string(&self, move_str: &str) -> Option<usize> {
+    pub fn parse_move_string(&mut self, move_str: &str) -> Option<usize> {
+        self.position
+            .generate_moves_and_captures(self.position.side, |_, _, _| 0);
+
         if move_str.len() < 4 {
             return None;
         }
@@ -301,10 +304,12 @@ impl Engine {
         let to_square = to_rank * 8 + to_file;
 
         // Find matching move in move list
-        for i in 0..self.position.first_move[1] as usize {
-            if let Some(mv) = self.position.move_list[i] {
+        for i in self.position.first_move[self.position.ply]
+            ..self.position.first_move[self.position.ply + 1]
+        {
+            if let Some(mv) = self.position.move_list[i as usize] {
                 if mv.from as usize == from_square && mv.to as usize == to_square {
-                    return Some(i);
+                    return Some(i as usize);
                 }
             }
         }
@@ -313,8 +318,10 @@ impl Engine {
     }
 
     pub fn display_legal_moves(&self) {
-        for i in 0..self.position.first_move[1] as usize {
-            if let Some(mv) = self.position.move_list[i] {
+        for i in self.position.first_move[self.position.ply]
+            ..self.position.first_move[self.position.ply + 1]
+        {
+            if let Some(mv) = self.position.move_list[i as usize] {
                 print!(
                     "{} ",
                     Engine::move_to_uci_string(mv.from, mv.to, mv.promote, false)

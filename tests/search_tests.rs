@@ -143,11 +143,11 @@ mod tactical_search {
     }
 }
 
-mod quiescent_search {
+mod quiescence_search {
     use super::*;
 
     #[test]
-    fn test_quiescent_search_evaluates_captures() {
+    fn test_quiescence_search_evaluates_captures() {
         // Standard Sicilian Defense position with tactical possibilities
         let fen = "rnbqkb1r/pp1ppppp/5n2/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
         let mut engine = engine_from_fen(fen, 2);
@@ -158,7 +158,7 @@ mod quiescent_search {
     }
 
     #[test]
-    fn test_quiescent_search_evaluates_stand_pat() {
+    fn test_quiescence_search_evaluates_stand_pat() {
         // Quiet position - standard starting position
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 1);
@@ -173,7 +173,7 @@ mod quiescent_search {
 
     #[test]
     #[ignore] // TODO: Too slow
-    fn test_quiescent_search_with_tactics() {
+    fn test_quiescence_search_with_tactics() {
         // Kiwipete position with many tactical possibilities
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);

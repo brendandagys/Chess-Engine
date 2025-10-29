@@ -1,12 +1,12 @@
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
-        FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE, ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE,
-        KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE, KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE,
-        MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK, NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL,
-        NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES, PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE,
-        QUEEN_CAPTURE_SCORE, QUEEN_SCORE, QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE,
-        ROOK_SCORE, ROW,
+        DEFAULT_MAX_QUIESCENCE_DEPTH, FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE,
+        ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE,
+        KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK,
+        NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES,
+        PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE, QUEEN_SCORE,
+        QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     time::TimeManager,
     types::{BitBoard, Board, Game, GameResult, Move, Piece, Side, Square},
@@ -2111,7 +2111,7 @@ impl Position {
         }
     }
 
-    /// Quiescent search extends the regular search by only examining
+    /// Quiescence search extends the regular search by only examining
     /// capturing moves until the position becomes "quiet" (no more captures).
     /// This avoids the horizon effect where the engine stops searching
     /// in the middle of a tactical sequence. This function is recursive.
@@ -2130,22 +2130,26 @@ impl Position {
     /// 3. Update alpha if stand pat improves it
     /// 4. Generate and search all capture moves recursively until the position is quiet (base case)
     /// 5. Apply alpha-beta pruning to reduce search space
-    fn quiescent_search(&mut self, mut alpha: i32, beta: i32) -> i32 {
+    fn quiescence_search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
         self.nodes += 1;
+
+        if depth == 0 {
+            return self.evaluate();
+        }
 
         if self.nodes & 1023 == 0 {
             self.check_if_time_is_exhausted();
         }
 
-        let stand_pat = self.evaluate();
+        let mut best_score = self.evaluate();
 
-        // Beta cutoff
-        if stand_pat >= beta {
-            return beta;
+        // Fail-high cutoff - position is too good
+        if best_score >= beta {
+            return best_score;
         }
 
-        if stand_pat > alpha {
-            alpha = stand_pat;
+        if best_score > alpha {
+            alpha = best_score;
         }
 
         self.generate_captures(self.side);
@@ -2168,15 +2172,17 @@ impl Position {
                 continue;
             }
 
-            // Recursively search
-            let score = -self.quiescent_search(-beta, -alpha);
+            let score = -self.quiescence_search(-beta, -alpha, depth - 1);
 
-            // Take back the move
             self.take_back_move();
 
-            // Update best score
+            // Fail-high cutoff
             if score >= beta {
-                return score; // Beta cutoff
+                return score;
+            }
+
+            if score > best_score {
+                best_score = score;
             }
 
             if score > alpha {
@@ -2259,30 +2265,36 @@ impl Position {
         &mut self,
         mut alpha: i32,
         beta: i32,
-        depth: u16,
+        mut depth: u16,
         history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
     ) -> i32 {
+        self.nodes += 1;
+
         // Check for draw by repetition
         if self.ply > 0 && self.search_backward_for_identical_position() {
             return 0;
         }
 
-        // If depth has run out, switch to quiescence search
-        if depth == 0 {
-            return self.quiescent_search(alpha, beta);
-        }
+        // TODO: Should we check for other draw conditions here?
 
-        // Increment node count
-        self.nodes += 1;
+        if depth == 0 {
+            return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH);
+        }
 
         if self.nodes & 1023 == 0 {
             self.check_if_time_is_exhausted();
         }
 
-        // Hard cutoff at maximum ply
-        if self.ply >= MAX_PLY - 1 {
-            return self.evaluate();
-        }
+        // TODO: Implement transposition table lookup
+        // TTEntry tt = TT.probe(pos);
+        // if (tt && tt.depth >= depth) {
+        //     if (tt.flag == EXACT)
+        //         return tt.value;
+        //     else if (tt.flag == LOWERBOUND && tt.value >= beta)
+        //         return tt.value;
+        //     else if (tt.flag == UPPERBOUND && tt.value <= alpha)
+        //         return tt.value;
+        // }
 
         // Check if we're currently in check
         let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
@@ -2292,6 +2304,13 @@ impl Position {
 
         let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
 
+        if in_check {
+            depth += 1; // Extend search depth if in check
+        }
+
+        let mut best_score = -100000; // Alpha: -infinity
+        let mut best_move: Option<Move> = None;
+
         // Generate all legal moves
         self.generate_moves_and_captures(self.side, |side, from, to| {
             history_table[side as usize][from as usize][to as usize]
@@ -2299,9 +2318,6 @@ impl Position {
 
         let move_list_start = self.first_move[self.ply] as usize;
         let move_list_end = self.first_move[self.ply + 1] as usize;
-
-        let mut best_score = -100000; // Alpha: -infinity
-        let mut best_move: Option<Move> = None;
 
         let mut legal_moves_count = 0;
 
@@ -2329,16 +2345,7 @@ impl Position {
 
             self.take_back_move();
 
-            if score > best_score {
-                best_score = score;
-                best_move = Some(current_move);
-
-                if score > alpha {
-                    alpha = score;
-                }
-            }
-
-            // Beta cutoff
+            // Beta cutoff - check first for early exit
             if score >= beta {
                 let is_capture = current_move.to.as_bit() & self.board.bit_all.0 != 0;
                 let is_promotion = current_move.promote.is_some();
@@ -2348,7 +2355,16 @@ impl Position {
                     self.update_history_table(history_table, depth, current_move);
                 }
 
-                return best_score; // Fail-soft beta-cutoff
+                return score; // Fail-hard beta-cutoff
+            }
+
+            if score > best_score {
+                best_score = score;
+                best_move = Some(current_move);
+
+                if best_score > alpha {
+                    alpha = best_score;
+                }
             }
         }
 
@@ -2356,7 +2372,7 @@ impl Position {
         if legal_moves_count == 0 {
             if in_check {
                 // Checkmate - return negative score, prefer shorter mates
-                return -10000 + self.ply as i32;
+                return -10000 + self.ply as i32; // TODO: Remove all magic constants
             } else {
                 // Stalemate
                 return 0;
