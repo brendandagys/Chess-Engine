@@ -1653,6 +1653,7 @@ impl Position {
         None
     }
 
+    /// TODO: Should this return something else (e.g., Result type)?
     /// Make a move with optional promotion piece and return success state.
     /// If unsuccessful, the move will be undone.
     pub fn make_move(&mut self, from: Square, to: Square, promote: Option<Piece>) -> bool {
@@ -2135,7 +2136,6 @@ impl Position {
 
         let mut best_score = self.evaluate();
 
-        // Fail-high cutoff - position is too good
         if best_score >= beta {
             return best_score;
         }
@@ -2246,7 +2246,28 @@ impl Position {
         history_table[self.side as usize][move_.from as usize][move_.to as usize] += bonus;
     }
 
-    /// Negamax search with alpha-beta pruning.
+    fn on_beta_cutoff(
+        &self,
+        current_move: Move,
+        score: i32,
+        depth: u16,
+        history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
+    ) -> i32 {
+        let is_capture = current_move.to.as_bit() & self.board.bit_all.0 != 0;
+        let is_promotion = current_move.promote.is_some();
+
+        // Only update history table for quiet moves
+        if !is_capture && !is_promotion {
+            self.update_history_table(history_table, depth, current_move);
+        }
+
+        // Fail-soft (return the score that caused the cutoff instead of beta)
+        return score;
+    }
+
+    /// Principal Variation Search with alpha-beta pruning.
+    /// PVS is an enhancement of alpha-beta that uses null-window searches for better pruning.
+    ///
     /// Alpha is the lower bound (player's best guaranteed score).
     /// Beta is the upper bound (opponent's best guaranteed score).
     pub fn search(
@@ -2308,8 +2329,8 @@ impl Position {
         let move_list_end = self.first_move[self.ply + 1] as usize;
 
         let mut legal_moves_count = 0;
+        let mut is_pv_node = true; // Track if this is still a PV node
 
-        // Search all moves
         for move_index in move_list_start..move_list_end {
             // Pick the best remaining move (selection sort)
             self.sort(move_index as isize);
@@ -2324,22 +2345,47 @@ impl Position {
 
             legal_moves_count += 1;
 
-            // Recursively search with negated window
-            let score = -self.search(-beta, -alpha, depth - 1, history_table);
+            let score: i32;
+
+            if is_pv_node {
+                // First move: search with full window (standard alpha-beta)
+                score = -self.search(-beta, -alpha, depth - 1, history_table);
+                is_pv_node = false;
+            } else {
+                // Non-PV moves: search with null/"zero" window (key optimization of PVS/NegaScout)
+                score = -self.search(-(alpha + 1), -alpha, depth - 1, history_table);
+
+                if score > alpha && score < beta {
+                    // Re-search with full window to get exact score
+                    let re_search_score = -self.search(-beta, -alpha, depth - 1, history_table);
+                    self.take_back_move();
+
+                    if re_search_score >= beta {
+                        return self.on_beta_cutoff(
+                            current_move,
+                            re_search_score,
+                            depth,
+                            history_table,
+                        );
+                    }
+
+                    if re_search_score > best_score {
+                        best_score = re_search_score;
+                        best_move = Some(current_move);
+
+                        if best_score > alpha {
+                            alpha = best_score;
+                        }
+                    }
+
+                    continue; // Already took back the move
+                }
+            }
 
             self.take_back_move();
 
-            // Beta cutoff - check first for early exit
             if score >= beta {
-                let is_capture = current_move.to.as_bit() & self.board.bit_all.0 != 0;
-                let is_promotion = current_move.promote.is_some();
-
-                // Only update history table for quiet moves
-                if !is_capture && !is_promotion {
-                    self.update_history_table(history_table, depth, current_move);
-                }
-
-                return score; // Fail-hard beta-cutoff
+                return self.on_beta_cutoff(current_move, score, depth, history_table);
             }
 
             if score > best_score {
