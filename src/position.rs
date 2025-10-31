@@ -2501,6 +2501,7 @@ impl Position {
             ranks: Self::get_ranks(),
         };
 
+        position.generate_moves_and_captures(position.side, |_, _, _| 0);
         position.set_material_scores();
         position
     }
