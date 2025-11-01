@@ -309,7 +309,7 @@ impl CLI {
             if let Some(move_idx) = self.engine.parse_move_string(&move_str) {
                 if let Some(mv) = self.engine.position.move_list[move_idx] {
                     if !self.engine.position.make_move(mv.from, mv.to, mv.promote) {
-                        println!("ILLEGAL MOVE!");
+                        println!("\nILLEGAL MOVE!");
                         continue;
                     }
 
@@ -321,7 +321,7 @@ impl CLI {
                     panic!("Move found in move list, but is `None`");
                 }
             } else {
-                println!("ILLEGAL MOVE!");
+                println!("\nILLEGAL MOVE!");
             }
         }
     }
