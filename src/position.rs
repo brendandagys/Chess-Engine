@@ -656,9 +656,9 @@ impl Position {
 
                 // Set background color based on square color
                 let bg_color = if BOARD_COLOR[i] == 0 {
-                    dark_square
-                } else {
                     light_square
+                } else {
+                    dark_square
                 };
 
                 // Set text color based on piece color
