@@ -101,18 +101,6 @@ impl Engine {
     where
         F: FnMut(u16, i32, &mut Position),
     {
-        // Handle panics from the hard time check
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                if *msg == "TimeExhausted" {
-                    return;
-                }
-            }
-
-            default_hook(panic_info);
-        }));
-
         self.position.time_manager = TimeManager::new(
             self.search_settings.wtime,
             self.search_settings.btime,
@@ -149,9 +137,9 @@ impl Engine {
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
-                    if let Some(msg) = panic_payload.downcast_ref::<&str>() {
+                    if let Some(panic_message) = panic_payload.downcast_ref::<&str>() {
                         // Handle time exhaustion panic
-                        if *msg == "TimeExhausted" {
+                        if *panic_message == "TimeExhausted" {
                             // Ensure we've unwound all moves
                             while self.position.ply > 0 {
                                 self.position.take_back_move();
