@@ -22,9 +22,9 @@ impl CLI {
     }
 
     fn show_help(&self) {
-        println!("======================= INFORMATION ======================");
+        println!("\n======================= INFORMATION ======================");
         println!("h or help - Displays help on the commands");
-        println!("d or D    - Displays board and toggles display setting");
+        println!("d or dd   - Displays board and toggles display setting");
         println!("moves     - Displays of list of possible moves");
         println!("fen       - Displays a FEN string for the current position");
         println!("f         - Flips the board");
@@ -37,9 +37,9 @@ impl CLI {
         println!("switch    - Switches sides");
         println!("undo      - Takes back the last move");
         println!("===================== CONFIGURATION ======================");
-        println!("fen <FEN> - Loads a FEN string");
-        println!("sd        - Sets the maximum search depth");
-        println!("st        - Sets the time limit per move in seconds");
+        println!("fen <FEN>    - Loads a FEN string");
+        println!("sd <depth>   - Sets the maximum search depth");
+        println!("st <seconds> - Sets the time limit per move in seconds");
     }
 
     fn display_board(&self) {
@@ -124,15 +124,15 @@ impl CLI {
                 Err(_) => return,
             }
 
-            let command = input.trim();
+            let command = input.trim().to_lowercase();
 
             // COMMANDS WITHOUT PARAMETERS
-            match command {
+            match command.as_str() {
                 "d" => {
                     self.engine.position.display_board(self.flip);
                     continue;
                 }
-                "D" => {
+                "dd" => {
                     self.display_enabled = !self.display_enabled;
 
                     if self.display_enabled {
@@ -143,7 +143,7 @@ impl CLI {
                     }
                     continue;
                 }
-                "f" | "F" => {
+                "f" => {
                     self.flip = !self.flip;
                     self.display_board();
                     continue;
@@ -178,7 +178,7 @@ impl CLI {
                     self.engine.computer_side = None;
                     continue;
                 }
-                "q" | "Q" | "quit" => {
+                "q" | "quit" => {
                     println!("\nProgram exiting");
                     break;
                 }
@@ -401,13 +401,13 @@ impl CLI {
 }
 
 fn main() {
-    println!("Brendan's Chess Engine");
-    println!("Version 1.0, 2025-10-07");
-    println!();
-    println!("\"h or help\" displays a list of commands");
-    println!();
+    println!("\n==============================");
+    println!("|   Brendan's Chess Engine   |");
+    println!("==============================\n");
+    println!("Version 0.1, 2025-11-01");
+    println!("\n\"h or help\" displays a list of commands\n");
 
     let mut cli = CLI::new();
-    cli.show_help();
+    // cli.show_help();
     cli.run_main_loop();
 }
