@@ -6,7 +6,6 @@ use std::sync::Once;
 use chess_engine::{
     engine::Engine,
     position::Position,
-    time::TimeManager,
     types::{Move, Piece, Side, Square},
     zobrist_hash::initialize_zobrist_hash_tables,
 };
