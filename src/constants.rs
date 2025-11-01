@@ -1,26 +1,20 @@
-/// NOTE: 1 ply = one move by a single player
-
-pub const NUM_SQUARES: usize = 64;
-pub const NUM_PIECE_TYPES: usize = 6;
-pub const NUM_SIDES: usize = 2;
-pub const NUM_RANKS: usize = 8;
-pub const NUM_FILES: usize = 8;
-
+/// Depth
 pub const DEFAULT_MAX_DEPTH: u16 = 9;
 pub const DEFAULT_MAX_QUIESCENCE_DEPTH: u16 = 6;
 
-/// Used to size the move list. We can explore extra plies due to quiescence search and check extensions.
-pub const MAX_PLY: usize = 64;
-
-// Time
-pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 300_000; // 5 minutes
+/// Time
+pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 180_000; // 3 minutes
 pub const DEFAULT_PLAYER_INCREMENT_MS: u64 = 0;
+
 pub const DEFAULT_FIXED_TIME: bool = false;
 pub const DEFAULT_MOVETIME_MS: u64 = 1000; // Value for fixed-time mode
 
 pub const SOFT_TO_HARD_LIMIT_RATIO: f64 = 0.75; // Hard limit is 1/30 of time remaining, plus increment
 
 pub const MAX_HISTORY_SCORE: isize = 10000;
+
+/// Used to size the move list. We can explore extra plies due to quiescence search and check extensions.
+pub const MAX_PLY: usize = 64;
 
 /// Maximum size for total moves in the move list.
 /// With 40 moves/position on average, allows for 50-ply depth.
@@ -36,12 +30,18 @@ pub const HASH_SCORE: i32 = 100_000_000;
 /// Added to move score so that captures are search right after the hash table.
 pub const CAPTURE_SCORE: i32 = 10_000_000;
 
-// Hash table configuration
+/// Hash table configuration
 
 // You could use a power-of-2 size for faster modulo (bitwise AND instead of %)
 // const NUM_HASH_SLOTS: usize = 1 << 22; // 4,194,304 (2^22)
 // let index = (self.current_key as usize) & (NUM_HASH_SLOTS - 1); // Faster than %
 pub const NUM_HASH_SLOTS: usize = 5_000_000;
+
+pub const NUM_SQUARES: usize = 64;
+pub const NUM_PIECE_TYPES: usize = 6;
+pub const NUM_SIDES: usize = 2;
+pub const NUM_RANKS: usize = 8;
+pub const NUM_FILES: usize = 8;
 
 #[rustfmt::skip]
 pub const INIT_COLOR: [u8; NUM_SQUARES] = [
