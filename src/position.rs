@@ -1960,6 +1960,9 @@ impl Position {
         let mut kingside_pawns = [0, 0];
 
         for side in Side::iter() {
+            // Add material score
+            score[side as usize] += self.material_score[side as usize] as i32;
+
             // Pawns
             let mut pawns = self.board.bit_pieces[side as usize][Piece::Pawn as usize];
 
@@ -2046,7 +2049,7 @@ impl Position {
 
         // Return evaluation from side-to-move's perspective
         // Negamax requires positive scores to mean the side-to-move is winning
-        let total = score[0] - score[1];
+        let total = score[Side::White as usize] - score[Side::Black as usize];
 
         match self.side {
             Side::White => total,
