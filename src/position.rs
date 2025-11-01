@@ -1,9 +1,9 @@
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
-        DEFAULT_MAX_QUIESCENCE_DEPTH, FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE,
+        DEFAULT_MAX_QUIESCENCE_DEPTH, FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE, INFINITY_SCORE,
         ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE,
-        KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK,
+        KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MATE_SCORE, MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK,
         NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES,
         PASSED_SCORE, PAWN_CAPTURE_SCORE, PAWN_SCORE, QUEEN_CAPTURE_SCORE, QUEEN_SCORE,
         QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
@@ -2039,7 +2039,14 @@ impl Position {
             }
         }
 
-        score[0] - score[1]
+        // Return evaluation from side-to-move's perspective
+        // Negamax requires positive scores to mean the side-to-move is winning
+        let total = score[0] - score[1];
+
+        match self.side {
+            Side::White => total,
+            Side::Black => -total,
+        }
     }
 
     pub fn parse_square(input: &str) -> Option<usize> {
@@ -2178,7 +2185,7 @@ impl Position {
             }
         }
 
-        alpha
+        best_score
     }
 
     fn check_if_time_is_exhausted(&mut self) {
@@ -2294,16 +2301,93 @@ impl Position {
             self.check_if_time_is_exhausted();
         }
 
-        // TODO: Implement transposition table lookup
-        // TTEntry tt = TT.probe(pos);
-        // if (tt && tt.depth >= depth) {
-        //     if (tt.flag == EXACT)
-        //         return tt.value;
-        //     else if (tt.flag == LOWERBOUND && tt.value >= beta)
-        //         return tt.value;
-        //     else if (tt.flag == UPPERBOUND && tt.value <= alpha)
-        //         return tt.value;
-        // }
+        // TODO: Transposition table integration (see CODEBASE_ANALYSIS.md for details)
+        // The hash table infrastructure exists in hash.rs but needs to be integrated here.
+        //
+        // Step 1: Probe the transposition table ONCE at the start of search (not at ply 0)
+        //   let hash_entry = if self.ply > 0 {
+        //       self.board.hash.probe()
+        //   } else {
+        //       None
+        //   };
+        //
+        // Step 2: Check if we can use the cached result for early cutoff
+        //   if let Some(entry) = hash_entry {
+        //       if entry.depth >= depth as u8 {
+        //           // Adjust mate scores for current ply distance
+        //           let adjusted_score = if entry.score > MATE_THRESHOLD {
+        //               entry.score - self.ply as i32
+        //           } else if entry.score < -MATE_THRESHOLD {
+        //               entry.score + self.ply as i32
+        //           } else {
+        //               entry.score
+        //           };
+        //
+        //           match entry.node_type {
+        //               NodeType::Exact => {
+        //                   self.board.hash.stats.exact_hits += 1;
+        //                   return adjusted_score;
+        //               }
+        //               NodeType::LowerBound => {
+        //                   if adjusted_score >= beta {
+        //                       self.board.hash.stats.cutoffs += 1;
+        //                       return adjusted_score;
+        //                   }
+        //               }
+        //               NodeType::UpperBound => {
+        //                   if adjusted_score <= alpha {
+        //                       self.board.hash.stats.fail_lows += 1;
+        //                       return adjusted_score;
+        //                   }
+        //               }
+        //           }
+        //       }
+        //   }
+        //
+        // Step 3: Extract hash move for move ordering
+        //   let hash_move: Option<Move> = hash_entry.and_then(|e| e.best_move);
+        //
+        // Step 4: After move generation, prioritize hash move
+        //   if let Some(hm) = hash_move {
+        //       for i in move_list_start..move_list_end {
+        //           if let Some(mv) = self.move_list[i] {
+        //               if mv.from == hm.from && mv.to == hm.to {
+        //                   self.move_list[i].as_mut().unwrap().score = HASH_SCORE as isize;
+        //                   break;
+        //               }
+        //           }
+        //       }
+        //   }
+        //
+        // Step 5: At end of search, store results in transposition table
+        //   // Determine node type
+        //   let node_type = if best_score >= beta {
+        //       NodeType::LowerBound  // Cut-node (fail-high)
+        //   } else if best_score > original_alpha {
+        //       NodeType::Exact  // PV-node
+        //   } else {
+        //       NodeType::UpperBound  // All-node (fail-low)
+        //   };
+        //
+        //   // Adjust mate scores for storage (relative to root, not current ply)
+        //   let stored_score = if best_score > MATE_THRESHOLD {
+        //       best_score + self.ply as i32
+        //   } else if best_score < -MATE_THRESHOLD {
+        //       best_score - self.ply as i32
+        //   } else {
+        //       best_score
+        //   };
+        //
+        //   // Store in hash table
+        //   if let Some(mv) = best_move {
+        //       self.board.hash.store_move(mv, depth as u8, stored_score, node_type);
+        //   } else if self.ply > 0 {
+        //       self.board.hash.store_without_move(depth as u8, stored_score, node_type);
+        //   }
+        //
+        // Note: The hash table probe and store methods already exist in hash.rs and work correctly.
+        // This integration would provide significant search speedup (2-5x) by avoiding re-computation
+        // of previously seen positions.
 
         // Check if we're currently in check
         let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
@@ -2317,7 +2401,7 @@ impl Position {
             depth += 1; // Extend search depth if in check
         }
 
-        let mut best_score = -100000; // Alpha: -infinity
+        let mut best_score = -INFINITY_SCORE;
         let mut best_move: Option<Move> = None;
 
         // Generate all legal moves
@@ -2402,7 +2486,7 @@ impl Position {
         if legal_moves_count == 0 {
             if in_check {
                 // Checkmate - return negative score, prefer shorter mates
-                return -10000 + self.ply as i32; // TODO: Remove all magic constants
+                return -MATE_SCORE + self.ply as i32;
             } else {
                 // Stalemate
                 return 0;

@@ -1066,3 +1066,137 @@ mod edge_cases {
         );
     }
 }
+
+/// Tests for the evaluation perspective fix (Bug #1 from CODEBASE_ANALYSIS.md)
+/// These tests verify that evaluation returns scores from side-to-move's perspective
+mod evaluation_perspective_fix_tests {
+    use super::*;
+
+    /// Test Case 1: Basic Position Evaluation
+    /// Starting position should evaluate near 0 with slight white advantage
+    #[test]
+    fn test_starting_position_evaluation() {
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        let position = position_from_fen(fen);
+
+        let eval = evaluate(&position);
+
+        // Starting position should be close to equal with slight white tempo advantage
+        assert!(
+            eval >= 0 && eval <= 100,
+            "Starting position should evaluate between 0 and 100 (white's tempo advantage), got {}",
+            eval
+        );
+    }
+
+    /// Test Case 2: Material Imbalance Detection
+    /// Position where Black is up a queen should show large negative evaluation
+    #[test]
+    fn test_material_imbalance_black_up_queen() {
+        // White missing queen (replaced with space), Black has queen - massive material imbalance
+        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1";
+        let position = position_from_fen(fen);
+
+        let eval = evaluate(&position);
+
+        // Queen is worth about 900 centipawns, so Black should be winning
+        // Score should be very negative (favoring Black)
+        assert!(
+            eval < -800,
+            "Black up a queen should show large negative score (< -800), got {}",
+            eval
+        );
+    }
+
+    /// Test Case 3: Material Imbalance - White Up Queen
+    #[test]
+    fn test_material_imbalance_white_up_queen() {
+        // Black missing queen (replaced with space), White has queen
+        let fen = "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        let position = position_from_fen(fen);
+
+        let eval = evaluate(&position);
+
+        // White up a queen should show large positive score
+        assert!(
+            eval > 800,
+            "White up a queen should show large positive score (> 800), got {}",
+            eval
+        );
+    }
+
+    /// Test Case 4: Evaluation Symmetry - Core Fix Verification
+    #[test]
+    fn test_evaluation_symmetry() {
+        let fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1";
+
+        // Evaluate with White to move
+        let eval_white = evaluate(&position_from_fen(fen));
+
+        // Same position but Black to move
+        let fen_black = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+        let eval_black = evaluate(&position_from_fen(fen_black));
+
+        assert_eq!(
+            eval_white, -eval_black,
+            "Evaluation must be symmetric! White POV: {}, Black POV: {} (should be negatives)",
+            eval_white, eval_black
+        );
+    }
+
+    /// Test Case 5: Multiple Positions - Symmetry Verification
+    #[test]
+    fn test_evaluation_symmetry_multiple_positions() {
+        let test_cases = vec![
+            // Starting position
+            (
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+            ),
+            // After e4
+            (
+                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
+                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            ),
+            // After e4 e5
+            (
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1",
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+            ),
+        ];
+
+        for (fen_white, fen_black) in test_cases {
+            let pos_white = position_from_fen(fen_white);
+            let pos_black = position_from_fen(fen_black);
+
+            let eval_white = evaluate(&pos_white);
+            let eval_black = evaluate(&pos_black);
+
+            assert_eq!(
+                eval_white, -eval_black,
+                "Symmetry violation for FEN: {}\nWhite to move: {}, Black to move: {}",
+                fen_white, eval_white, eval_black
+            );
+        }
+    }
+
+    /// Test Case 6: Endgame Symmetry
+    #[test]
+    fn test_evaluation_symmetry_endgame() {
+        // Simple endgame with pawns and kings
+        let fen_white = "8/8/8/3k4/3P4/3K4/8/8 w - - 0 1";
+        let fen_black = "8/8/8/3k4/3P4/3K4/8/8 b - - 0 1";
+
+        let pos_white = position_from_fen(fen_white);
+        let pos_black = position_from_fen(fen_black);
+
+        let eval_white = evaluate(&pos_white);
+        let eval_black = evaluate(&pos_black);
+
+        assert_eq!(
+            eval_white, -eval_black,
+            "Endgame evaluation must be symmetric! White: {}, Black: {}",
+            eval_white, eval_black
+        );
+    }
+}

@@ -3,7 +3,7 @@ use std::panic;
 use crate::{
     constants::{
         DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS,
-        NUM_SIDES, NUM_SQUARES,
+        INFINITY_SCORE, MATE_THRESHOLD, NUM_SIDES, NUM_SQUARES,
     },
     position::Position,
     time::TimeManager,
@@ -132,15 +132,18 @@ impl Engine {
 
             // Perform the search at this depth
             let score = match panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                self.position
-                    .search(-10000, 10000, depth, &mut self.history_table)
+                self.position.search(
+                    -INFINITY_SCORE,
+                    INFINITY_SCORE,
+                    depth,
+                    &mut self.history_table,
+                )
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
                     if let Some(panic_message) = panic_payload.downcast_ref::<&str>() {
-                        // Handle time exhaustion panic
                         if *panic_message == "TimeExhausted" {
-                            // Ensure we've unwound all moves
+                            // Handle time exhaustion panic
                             while self.position.ply > 0 {
                                 self.position.take_back_move();
                             }
@@ -160,12 +163,11 @@ impl Engine {
             final_depth = depth;
             final_score = score;
 
-            // Callback for depth-specific output or processing
             if let Some(ref mut callback) = on_depth_complete {
                 callback(depth, score, &mut self.position);
             }
 
-            if score > 9000 || score < -9000 {
+            if score > MATE_THRESHOLD || score < -MATE_THRESHOLD {
                 break;
             }
         }

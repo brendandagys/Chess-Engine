@@ -11,7 +11,12 @@ pub const DEFAULT_MOVETIME_MS: u64 = 1000; // Value for fixed-time mode
 
 pub const SOFT_TO_HARD_LIMIT_RATIO: f64 = 0.75; // Hard limit is 1/30 of time remaining, plus increment
 
-pub const MAX_HISTORY_SCORE: isize = 10000;
+pub const MAX_HISTORY_SCORE: isize = 10_000;
+
+/// Search constants
+pub const MATE_SCORE: i32 = 10_000;
+pub const MATE_THRESHOLD: i32 = 9000;
+pub const INFINITY_SCORE: i32 = 10_000;
 
 /// Used to size the move list. We can explore extra plies due to quiescence search and check extensions.
 pub const MAX_PLY: usize = 64;
