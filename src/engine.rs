@@ -101,7 +101,7 @@ impl Engine {
     where
         F: FnMut(u16, i32, &mut Position),
     {
-        // Handle panics from the hard time check
+        // Don't print anything when "TimeExhausted" panics occur
         let default_hook = panic::take_hook();
         panic::set_hook(Box::new(move |panic_info| {
             if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
