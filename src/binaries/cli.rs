@@ -96,7 +96,9 @@ impl CLI {
             // Computer's turn
             if self.engine.computer_side == Some(self.engine.position.side) {
                 println!("\nComputer is thinking...");
-                println!("\nDEPTH         NODES     SCORE      PV");
+                println!("\n┌──────┬──────────────┬──────────┬────────────────────┐");
+                println!("│ DEPTH│    NODES     │  SCORE   │     BEST MOVE      │");
+                println!("├──────┼──────────────┼──────────┼────────────────────┤");
 
                 let has_legal_moves = self.make_computer_move();
 
@@ -349,19 +351,27 @@ impl CLI {
     fn make_computer_move(&mut self) -> bool {
         self.engine
             .think(Some(|depth, score, position: &mut Position| {
-                print!("{:>5}  {:>12}  {:>8}   ", depth, (*position).nodes, score);
+                print!(
+                    "│ {:>4} │ {:>12} │ {:>8} │ ",
+                    depth,
+                    (*position).nodes,
+                    score
+                );
 
                 // Display best move
                 if let (Some(from), Some(to)) =
                     ((*position).best_move_from, (*position).best_move_to)
                 {
-                    print!(" ");
-                    Position::display_move(from, to);
+                    print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
+                } else {
+                    print!("{:^18} ", "");
                 }
 
-                println!();
+                println!("│");
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }));
+
+        println!("└──────┴──────────────┴──────────┴────────────────────┘");
 
         let (hash_from, hash_to) = if let (Some(from), Some(to)) =
             (self.engine.position.hash_from, self.engine.position.hash_to)
@@ -376,20 +386,43 @@ impl CLI {
 
         let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
 
-        print!("\nTime: {} ms", elapsed_ms);
-
+        // Calculate statistics
         let nodes_per_second = match elapsed_ms {
-            0 => 0.0, // Avoid division by zero
-            ms => (self.engine.position.nodes as f64 / ms as f64) * 1000.0,
+            0 => 0, // Avoid division by zero
+            ms => ((self.engine.position.nodes as f64 / ms as f64) * 1000.0) as u64,
         };
 
-        print!(" | Nodes/s: {}", nodes_per_second as u64);
+        let q_nodes = self.engine.position.qnodes;
+        let total_nodes = self.engine.position.nodes;
+        let main_nodes = total_nodes.saturating_sub(q_nodes);
+        let q_percent = if total_nodes > 0 {
+            (q_nodes as f64 / total_nodes as f64 * 100.0) as u64
+        } else {
+            0
+        };
 
-        print!(
-            " | Soft: {:?} - Hard: {:?}\n",
-            self.engine.position.time_manager.soft_limit,
-            self.engine.position.time_manager.hard_limit
+        let beta_cutoffs = self.engine.position.beta_cutoffs;
+        let cutoff_rate = if main_nodes > 0 {
+            (beta_cutoffs as f64 / main_nodes as f64 * 100.0) as u64
+        } else {
+            0
+        };
+
+        // Display comprehensive statistics
+        println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
+        println!(
+            "│ Time:        {:>9} ms  │  Depth:  {:>4}  │  SelDepth:  {:>4}  │",
+            elapsed_ms, self.engine.search_settings.depth, self.engine.position.seldepth
         );
+        println!(
+            "│ Nodes:       {:>12}  │  Q-Nodes:    {:>12}  ({}%)   │",
+            total_nodes, q_nodes, q_percent
+        );
+        println!(
+            "│ NPS:         {:>12}  │  β-Cutoffs:  {:>12}  ({}%)   │",
+            nodes_per_second, beta_cutoffs, cutoff_rate
+        );
+        println!("└──────────────────────────────────────────────────────────────────┘");
 
         println!(
             "\nComputer plays: \x1b[32m{}\x1b[0m",

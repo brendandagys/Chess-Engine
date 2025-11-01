@@ -19,6 +19,11 @@ pub struct Position {
     pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
     pub fifty: u8,                    // Ply since last capture or pawn move (0-100) [50-move rule]
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
+    pub qnodes: usize, // Quiescence nodes searched
+    pub seldepth: usize, // Maximum selective search depth reached (including quiescence)
+    pub hash_hits: usize, // Number of transposition table hits
+    pub hash_stores: usize, // Number of positions stored in hash table
+    pub beta_cutoffs: usize, // Number of beta cutoffs (fail-highs)
     pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
     pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
     pub board: Board,
@@ -2132,6 +2137,12 @@ impl Position {
     /// 5. Apply alpha-beta pruning to reduce search space
     fn quiescence_search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
         self.nodes += 1;
+        self.qnodes += 1;
+
+        // Track selective depth
+        if self.ply > self.seldepth {
+            self.seldepth = self.ply;
+        }
 
         if depth == 0 {
             return self.evaluate();
@@ -2254,12 +2265,14 @@ impl Position {
     }
 
     fn on_beta_cutoff(
-        &self,
+        &mut self,
         current_move: Move,
         score: i32,
         depth: u16,
         history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
     ) -> i32 {
+        self.beta_cutoffs += 1;
+
         let is_capture = current_move.to.as_bit() & self.board.bit_all.0 != 0;
         let is_promotion = current_move.promote.is_some();
 
@@ -2285,6 +2298,11 @@ impl Position {
         history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
     ) -> i32 {
         self.nodes += 1;
+
+        // Track selective depth for main search too
+        if self.ply > self.seldepth {
+            self.seldepth = self.ply;
+        }
 
         // Check for draw by repetition
         if self.ply > 0 && self.search_backward_for_identical_position() {
@@ -2543,6 +2561,11 @@ impl Position {
             game_list: [None; GAME_STACK],
             fifty: 0,
             nodes: 0,
+            qnodes: 0,
+            seldepth: 0,
+            hash_hits: 0,
+            hash_stores: 0,
+            beta_cutoffs: 0,
             ply: 0,
             ply_from_start_of_game: 0,
             board: Board::new(),

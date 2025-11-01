@@ -101,6 +101,18 @@ impl Engine {
     where
         F: FnMut(u16, i32, &mut Position),
     {
+        // Handle panics from the hard time check
+        let default_hook = panic::take_hook();
+        panic::set_hook(Box::new(move |panic_info| {
+            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
+                if *msg == "TimeExhausted" {
+                    return;
+                }
+            }
+
+            default_hook(panic_info);
+        }));
+
         self.position.time_manager = TimeManager::new(
             self.search_settings.wtime,
             self.search_settings.btime,
@@ -110,7 +122,13 @@ impl Engine {
             self.position.side == Side::White,
         );
 
+        // Reset all search statistics
         self.position.nodes = 0;
+        self.position.qnodes = 0;
+        self.position.seldepth = 0;
+        self.position.hash_hits = 0;
+        self.position.hash_stores = 0;
+        self.position.beta_cutoffs = 0;
 
         // Reset history table at the start of the search
         self.history_table = [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES];

@@ -54,12 +54,19 @@ pub fn uci_loop(engine: &mut Engine) {
                             ((*position).best_move_from, (*position).best_move_to)
                         {
                             let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
+                            let nps = if time_ms > 0 {
+                                ((*position).nodes as u64 * 1000) / time_ms
+                            } else {
+                                0
+                            };
                             let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
                             println!(
-                                "info depth {} score cp {} nodes {} time {} pv {}",
+                                "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
                                 depth,
+                                (*position).seldepth,
                                 score,
                                 (*position).nodes,
+                                nps,
                                 time_ms,
                                 best_move_uci
                             );
