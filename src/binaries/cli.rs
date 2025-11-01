@@ -411,18 +411,18 @@ impl CLI {
         // Display comprehensive statistics
         println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
         println!(
-            "│ Time:        {:>9} ms  │  Depth:  {:>4}  │  SelDepth:  {:>4}  │",
+            "│ Time:        {:>9} ms  │  Depth:  {:>4}     SelDepth:  {:>4}  │",
             elapsed_ms, self.engine.search_settings.depth, self.engine.position.seldepth
         );
         println!(
-            "│ Nodes:       {:>12}  │  Q-Nodes:    {:>12}  ({}%)   │",
+            "│ Nodes:       {:>12}  │  Q-Nodes:      {:>12} ({}%)  │",
             total_nodes, q_nodes, q_percent
         );
         println!(
-            "│ NPS:         {:>12}  │  β-Cutoffs:  {:>12}  ({}%)   │",
+            "│ NPS:         {:>12}  │  β-Cutoffs:    {:>12} ({}%)  │",
             nodes_per_second, beta_cutoffs, cutoff_rate
         );
-        println!("└──────────────────────────────────────────────────────────────────┘");
+        println!("└─────────────────────────────────────────────────────────────────┘");
 
         println!(
             "\nComputer plays: \x1b[32m{}\x1b[0m",
