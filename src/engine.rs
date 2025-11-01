@@ -165,7 +165,6 @@ impl Engine {
                 }
             };
 
-            // Ensure ply is back to 0 after search
             while self.position.ply > 0 {
                 self.position.take_back_move();
             }
@@ -178,7 +177,6 @@ impl Engine {
                 callback(depth, score, &mut self.position);
             }
 
-            // Stop if callback requests it or if we found a mate
             if score > 9000 || score < -9000 {
                 break;
             }
@@ -215,13 +213,12 @@ impl Engine {
         );
 
         if let Some(piece) = promote {
-            let promote_char = match piece {
+            result.push(match piece {
                 Piece::Knight => 'n',
                 Piece::Bishop => 'b',
                 Piece::Rook => 'r',
                 _ => 'q',
-            };
-            result.push(promote_char);
+            });
         }
 
         result
