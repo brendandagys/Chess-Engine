@@ -4,6 +4,21 @@ use chess_engine::types::{GameResult, Side};
 use rand::Rng;
 use std::io::{self, Write};
 
+fn format_with_commas(n: u64) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    let len = s.len();
+
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            result.push(',');
+        }
+        result.push(ch);
+    }
+
+    result
+}
+
 struct CLI {
     engine: Engine,
     display_enabled: bool,
@@ -354,7 +369,7 @@ impl CLI {
                 print!(
                     "│ {:>4} │ {:>12} │ {:>8} │ ",
                     depth,
-                    (*position).nodes,
+                    format_with_commas((*position).nodes as u64),
                     score
                 );
 
@@ -411,16 +426,22 @@ impl CLI {
         // Display comprehensive statistics
         println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
         println!(
-            "│ Time:        {:>9} ms  │  Depth:  {:>4}     SelDepth:  {:>4}  │",
-            elapsed_ms, self.engine.search_settings.depth, self.engine.position.seldepth
+            "│ Time:        {:>9} ms  │  Depth:  {:>4}     Quiescence: {:>3}  │",
+            format_with_commas(elapsed_ms as u64),
+            self.engine.search_settings.depth,
+            self.engine.position.seldepth - self.engine.search_settings.depth as usize
         );
         println!(
-            "│ Nodes:       {:>12}  │  Q-Nodes:      {:>12} ({}%)  │",
-            total_nodes, q_nodes, q_percent
+            "│ Nodes:       {:>12}  │  Qui-Nodes:    {:>12} ({}%)  │",
+            format_with_commas(total_nodes as u64),
+            format_with_commas(q_nodes as u64),
+            q_percent
         );
         println!(
             "│ NPS:         {:>12}  │  β-Cutoffs:    {:>12} ({}%)  │",
-            nodes_per_second, beta_cutoffs, cutoff_rate
+            format_with_commas(nodes_per_second),
+            format_with_commas(beta_cutoffs as u64),
+            cutoff_rate
         );
         println!("└─────────────────────────────────────────────────────────────────┘");
 
