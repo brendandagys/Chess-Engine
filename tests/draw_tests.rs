@@ -631,3 +631,174 @@ mod insufficient_material {
         );
     }
 }
+
+#[cfg(test)]
+mod stalemate_detection {
+    use super::*;
+
+    /// Classic stalemate: King with no legal moves but not in check
+    #[test]
+    fn test_classic_stalemate_king_in_corner() {
+        // Black king on a8, white queen on b6, white king on c6
+        // Black king has no legal moves and is not in check
+        let fen = "k7/8/1QK5/8/8/8/8/8 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "Black king with no legal moves (not in check) should be stalemate"
+        );
+    }
+
+    /// Common endgame stalemate: King vs King + Queen
+    #[test]
+    fn test_stalemate_queen_endgame() {
+        // Famous stalemate pattern: Black king on a1, white king on c2, white queen on b3
+        let fen = "8/8/8/8/8/1Q6/2K5/k7 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "Classic queen endgame stalemate should be detected"
+        );
+    }
+
+    /// Stalemate with multiple pieces but no legal moves
+    #[test]
+    fn test_complex_stalemate() {
+        // Black king on h1, white king on f2, white rook on h2
+        // Black king is trapped in the corner
+        let fen = "8/8/8/8/8/8/5KR1/7k b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "Complex position with no legal moves should be stalemate"
+        );
+    }
+
+    #[test]
+    fn test_not_stalemate_has_moves() {
+        // Black king can move to b7, c7, or c8 (added pawns to avoid insufficient material)
+        let fen = "k7/8/2K5/8/8/8/PP6/8 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_ne!(
+            result,
+            GameResult::Stalemate,
+            "King with legal moves should NOT be stalemate"
+        );
+        assert_eq!(
+            result,
+            GameResult::InProgress,
+            "Game should be in progress when king has moves"
+        );
+    }
+
+    /// NOT stalemate: It's checkmate (king in check with no legal moves)
+    #[test]
+    fn test_not_stalemate_is_checkmate() {
+        // Black king on h8 is in check from queen on g7, no escape
+        let fen = "7k/6Q1/5K2/8/8/8/8/8 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_ne!(
+            result,
+            GameResult::Stalemate,
+            "King in check with no legal moves is checkmate, not stalemate"
+        );
+        assert!(
+            matches!(result, GameResult::Checkmate(_)),
+            "Should be checkmate, got {:?}",
+            result
+        );
+    }
+
+    /// Stalemate where king's only "moves" would be into check
+    #[test]
+    fn test_stalemate_all_moves_into_check() {
+        // Black king on e1, white king on e3, white queen on d3
+        // All squares around black king are controlled
+        let fen = "8/8/8/8/8/3QK3/8/4k3 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "King where all potential moves are into check should be stalemate"
+        );
+    }
+
+    /// Famous stalemate trap from practical games
+    #[test]
+    fn test_practical_stalemate_trap() {
+        // This position can arise from careless play with queen vs lone king
+        // Black king on a8, white queen on c7, white king on a6
+        let fen = "k7/2Q5/K7/8/8/8/8/8 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "Classic stalemate trap should be detected"
+        );
+    }
+
+    /// Test that stalemate is detected after a move creates the position
+    #[test]
+    fn test_stalemate_after_move() {
+        // White queen can move to create stalemate
+        // Starting position where king has one escape square
+        let fen = "k7/2Q5/2K5/8/8/8/8/8 b - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        // This position should already be stalemate (king on a8, queen on c7, king on c6)
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::Stalemate,
+            "This should already be a stalemate position"
+        );
+    }
+
+    /// Test creating stalemate with a queen move
+    #[test]
+    fn test_create_stalemate_with_queen() {
+        use chess_engine::types::Square;
+
+        // Position where white can create stalemate
+        // King on a8, white king on c7, white queen on c6
+        let fen = "k7/2K5/2Q5/8/8/8/8/8 w - - 0 1";
+        let mut position = position_from_fen(fen);
+
+        // Black is already in stalemate
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            GameResult::InProgress,
+            "White to move, black not yet stalemated"
+        );
+
+        // White plays Qc6-b6, maintaining stalemate for black's next turn
+        let move_made = position.make_move(Square::C6, Square::B6, None);
+        assert!(move_made, "Queen move should be legal");
+
+        // After the move, black is in stalemate
+        let result_after = position.check_game_result();
+        assert_eq!(
+            result_after,
+            GameResult::Stalemate,
+            "Should be stalemate after queen move to b6"
+        );
+    }
+}
