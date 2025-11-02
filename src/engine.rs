@@ -323,17 +323,24 @@ impl Engine {
     }
 
     pub fn display_legal_moves(&self) {
+        let mut moves = Vec::new();
+
         for i in self.position.first_move[self.position.ply]
             ..self.position.first_move[self.position.ply + 1]
         {
             if let Some(mv) = self.position.move_list[i as usize] {
-                print!(
-                    "{} ",
-                    Engine::move_to_uci_string(mv.from, mv.to, mv.promote, false)
-                );
-                if (i + 1) % 8 == 0 {
-                    println!();
-                }
+                moves.push(Engine::move_to_uci_string(
+                    mv.from, mv.to, mv.promote, false,
+                ));
+            }
+        }
+
+        moves.sort();
+
+        for (index, move_str) in moves.iter().enumerate() {
+            print!("{} ", move_str);
+            if (index + 1) % 8 == 0 {
+                println!();
             }
         }
         println!();

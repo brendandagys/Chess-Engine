@@ -178,7 +178,7 @@ impl CLI {
                     continue;
                 }
                 "moves" => {
-                    println!("\nLegal moves:");
+                    println!();
                     self.engine.display_legal_moves();
                     continue;
                 }
