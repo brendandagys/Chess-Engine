@@ -1574,25 +1574,35 @@ impl Position {
         self.first_move[self.ply + 1] = move_count;
     }
 
-    pub fn reps(&self) -> usize {
-        let mut count = 0;
-        let mut i = self.ply_from_start_of_game;
+    /// Returns the number of times the current position has occurred **previously** in the game
+    pub fn repetitions(&self) -> usize {
+        // game_list[i] stores the hash of the position BEFORE the move that led to ply i
+        // So game_list[i].hash is the position at ply i-1
+        // When we're at ply N, we want to check positions at ply N-2, N-4, etc. (same side to move)
+        // Those hashes are stored in game_list[N-1], game_list[N-3], etc.
 
-        while i >= self.fifty as usize && i >= 2 {
-            i -= 2;
-            if let Some(game) = self.game_list[i] {
-                if game.hash == self.board.hash.current_key {
-                    count += 1;
-                }
-            }
+        if self.ply_from_start_of_game < 2 {
+            return 0;
         }
 
-        count
+        let current_hash = self.board.hash.current_key;
+        let min_ply = self
+            .ply_from_start_of_game
+            .saturating_sub(self.fifty as usize);
+
+        // Iterate backwards by 2 (checking same side to move)
+        // Start at N-1 (representing position at ply N-2), stop when reaching min_ply
+        (0..=(self.ply_from_start_of_game - 1) / 2)
+            .map(|k| self.ply_from_start_of_game - 1 - (2 * k))
+            .take_while(|&i| i > 0 && i - 1 >= min_ply)
+            .filter_map(|i| self.game_list[i])
+            .filter(|game| game.hash == current_hash)
+            .count()
     }
 
     /// Checks the current game state and returns the result
     pub fn check_game_result(&mut self) -> GameResult {
-        if self.reps() >= 3 {
+        if self.repetitions() >= 2 {
             return GameResult::DrawByRepetition;
         }
 
