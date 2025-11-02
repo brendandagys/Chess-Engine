@@ -2409,12 +2409,15 @@ impl Position {
             self.seldepth = self.ply;
         }
 
-        // Check for draw by repetition
+        // Check for draw by repetition (2-fold during search to avoid loops)
         if self.ply > 0 && self.search_backward_for_identical_position() {
             return 0;
         }
 
-        // TODO: Should we check for other draw conditions here?
+        // Check for draw by insufficient material
+        if self.has_insufficient_material() {
+            return 0;
+        }
 
         if depth == 0 {
             return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH);
