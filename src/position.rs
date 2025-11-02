@@ -73,6 +73,92 @@ impl Default for Position {
 }
 
 impl Position {
+    pub fn new(time_manager: TimeManager) -> Self {
+        let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
+
+        let (
+            mask_passed,
+            mask_isolated,
+            mask_path,
+            mask_column,
+            pawn_left_index,
+            pawn_right_index,
+            bit_pawn_left_captures,
+            bit_pawn_right_captures,
+            bit_pawn_defends,
+            pawn_plus_index,
+            pawn_double_index,
+            not_a_file,
+            not_h_file,
+        ) = Self::get_pawn_masks();
+
+        let (square_score, king_endgame_score, passed_pawns_score) = Self::get_score_tables();
+
+        let mut first_move = [-1; MAX_PLY];
+        first_move[0] = 0;
+
+        let (bit_queen_moves, bit_rook_moves, bit_bishop_moves) =
+            Self::get_queen_rook_bishop_moves();
+
+        let mut position = Self {
+            // Dynamic
+            move_list: [None; MOVE_STACK],
+            first_move,
+            game_list: [None; GAME_STACK],
+            fifty: 0,
+            nodes: 0,
+            qnodes: 0,
+            seldepth: 0,
+            hash_hits: 0,
+            hash_stores: 0,
+            beta_cutoffs: 0,
+            ply: 0,
+            ply_from_start_of_game: 0,
+            board: Board::new(),
+            pawn_engine_score: [0; NUM_SIDES],
+            piece_engine_score: [0; NUM_SIDES],
+            material_score: [0; NUM_SIDES],
+            castle: 0b1111, // All castling rights available
+            best_move_from: None,
+            best_move_to: None,
+            hash_from: None,
+            hash_to: None,
+            time_manager,
+            side: Side::White,
+            // Static
+            square_score,
+            king_endgame_score,
+            passed_pawns_score,
+            bit_between: Self::get_bit_between(),
+            bit_after: Self::get_bit_after(),
+            bit_pawn_left_captures,
+            bit_pawn_right_captures,
+            bit_pawn_defends,
+            bit_knight_moves: Self::get_knight_moves(),
+            bit_bishop_moves,
+            bit_rook_moves,
+            bit_queen_moves,
+            bit_king_moves: Self::get_king_moves(),
+            mask_passed,
+            mask_path,
+            mask_column,
+            mask_isolated,
+            mask_kingside,
+            mask_queenside,
+            not_a_file,
+            not_h_file,
+            pawn_plus_index,
+            pawn_double_index,
+            pawn_left_index,  // "Left" for both sides is toward A file
+            pawn_right_index, // "Right" for both sides is toward H file
+            ranks: Self::get_ranks(),
+        };
+
+        position.generate_moves_and_captures(position.side, |_, _, _| 0);
+        position.set_material_scores();
+        position
+    }
+
     fn get_ranks() -> [[u8; NUM_SQUARES]; NUM_SIDES] {
         let mut ranks = [[0; NUM_SQUARES]; NUM_SIDES];
 
@@ -2633,92 +2719,6 @@ impl Position {
         }
 
         best_score
-    }
-
-    pub fn new(time_manager: TimeManager) -> Self {
-        let (mask_queenside, mask_kingside) = Self::get_queenside_and_kingside_masks();
-
-        let (
-            mask_passed,
-            mask_isolated,
-            mask_path,
-            mask_column,
-            pawn_left_index,
-            pawn_right_index,
-            bit_pawn_left_captures,
-            bit_pawn_right_captures,
-            bit_pawn_defends,
-            pawn_plus_index,
-            pawn_double_index,
-            not_a_file,
-            not_h_file,
-        ) = Self::get_pawn_masks();
-
-        let (square_score, king_endgame_score, passed_pawns_score) = Self::get_score_tables();
-
-        let mut first_move = [-1; MAX_PLY];
-        first_move[0] = 0;
-
-        let (bit_queen_moves, bit_rook_moves, bit_bishop_moves) =
-            Self::get_queen_rook_bishop_moves();
-
-        let mut position = Self {
-            // Dynamic
-            move_list: [None; MOVE_STACK],
-            first_move,
-            game_list: [None; GAME_STACK],
-            fifty: 0,
-            nodes: 0,
-            qnodes: 0,
-            seldepth: 0,
-            hash_hits: 0,
-            hash_stores: 0,
-            beta_cutoffs: 0,
-            ply: 0,
-            ply_from_start_of_game: 0,
-            board: Board::new(),
-            pawn_engine_score: [0; NUM_SIDES],
-            piece_engine_score: [0; NUM_SIDES],
-            material_score: [0; NUM_SIDES],
-            castle: 0b1111, // All castling rights available
-            best_move_from: None,
-            best_move_to: None,
-            hash_from: None,
-            hash_to: None,
-            time_manager,
-            side: Side::White,
-            // Static
-            square_score,
-            king_endgame_score,
-            passed_pawns_score,
-            bit_between: Self::get_bit_between(),
-            bit_after: Self::get_bit_after(),
-            bit_pawn_left_captures,
-            bit_pawn_right_captures,
-            bit_pawn_defends,
-            bit_knight_moves: Self::get_knight_moves(),
-            bit_bishop_moves,
-            bit_rook_moves,
-            bit_queen_moves,
-            bit_king_moves: Self::get_king_moves(),
-            mask_passed,
-            mask_path,
-            mask_column,
-            mask_isolated,
-            mask_kingside,
-            mask_queenside,
-            not_a_file,
-            not_h_file,
-            pawn_plus_index,
-            pawn_double_index,
-            pawn_left_index,  // "Left" for both sides is toward A file
-            pawn_right_index, // "Right" for both sides is toward H file
-            ranks: Self::get_ranks(),
-        };
-
-        position.generate_moves_and_captures(position.side, |_, _, _| 0);
-        position.set_material_scores();
-        position
     }
 
     /// Load a position from a FEN (Forsyth-Edwards Notation) string.
