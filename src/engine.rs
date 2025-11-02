@@ -1,4 +1,4 @@
-use std::panic;
+use std::{panic, sync::Arc};
 
 use crate::{
     constants::{
@@ -102,16 +102,21 @@ impl Engine {
         F: FnMut(u16, i32, &mut Position),
     {
         // Don't print anything when "TimeExhausted" panics occur
-        let default_hook = panic::take_hook();
-        panic::set_hook(Box::new(move |panic_info| {
-            if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                if *msg == "TimeExhausted" {
-                    return;
-                }
-            }
+        let default_hook: Arc<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static> =
+            Arc::from(panic::take_hook());
 
-            default_hook(panic_info);
-        }));
+        panic::set_hook({
+            let hook = Arc::clone(&default_hook);
+            Box::new(move |panic_info: &panic::PanicHookInfo<'_>| {
+                if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
+                    if *msg == "TimeExhausted" {
+                        return;
+                    }
+                }
+
+                hook(panic_info);
+            }) as Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>
+        });
 
         self.position.time_manager = TimeManager::new(
             self.search_settings.wtime,
