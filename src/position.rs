@@ -1846,11 +1846,7 @@ impl Position {
         None
     }
 
-    /// TODO: Should this return something else (e.g., Result type)?
-    /// Make a move with optional promotion piece and return success state.
-    /// If unsuccessful, the move will be undone.
-    pub fn make_move(&mut self, from: Square, to: Square, promote: Option<Piece>) -> bool {
-        // Check for castling
+    fn check_for_castling(&mut self, from: Square, to: Square) -> bool {
         if (to as i32 - from as i32).abs() == 2 && self.board.value[from as usize] == Piece::King {
             // Cannot castle out of check
             if self.is_square_attacked_by_side(self.side.opponent(), from) {
@@ -1898,6 +1894,17 @@ impl Position {
                 self.board
                     .update_piece(self.side, Piece::Rook, Square::A8, Square::D8);
             }
+        }
+
+        true
+    }
+
+    /// TODO: Should this return something else (e.g., Result type)?
+    /// Make a move with optional promotion piece and return success state.
+    /// If unsuccessful, the move will be undone.
+    pub fn make_move(&mut self, from: Square, to: Square, promote: Option<Piece>) -> bool {
+        if !self.check_for_castling(from, to) {
+            return false;
         }
 
         let mut game = self.game_list[self.ply_from_start_of_game].unwrap_or(Game::new());
@@ -1955,8 +1962,8 @@ impl Position {
                 .remove_piece(self.side.opponent(), self.board.value[to as usize], to);
         }
 
-        // Handle promotions
         if self.board.value[from as usize] == Piece::Pawn && [0, 7].contains(&ROW[to as usize]) {
+            // Handle promotions
             let promotion_piece = promote.unwrap_or(Piece::Queen);
             self.board.remove_piece(self.side, Piece::Pawn, from);
             self.board.add_piece(self.side, promotion_piece, to);
