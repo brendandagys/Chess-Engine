@@ -526,12 +526,13 @@ mod repetition_detection {
     #[test]
     fn test_fifty_move_rule_resets_on_capture() {
         // Position where a capture is possible with kings having space
-        let fen = "3k4/8/8/4n3/4N3/8/8/3K4 w - - 98 1";
+        // Using rooks to avoid insufficient material after capture
+        let fen = "3k4/8/8/4r3/4R3/8/8/3K4 w - - 98 1";
         let mut position = position_from_fen(fen);
 
         assert_eq!(position.fifty, 98, "Should start at 98");
 
-        // Capture the black knight
+        // Capture the black rook
         position.make_move(Square::E4, Square::E5, None);
 
         assert_eq!(position.fifty, 0, "Capture should reset fifty counter to 0");
@@ -586,7 +587,8 @@ mod repetition_detection {
     #[test]
     fn test_fifty_move_counter_from_fen() {
         // Load position with halfmove clock already set, with space for kings to move
-        let fen = "3k4/8/8/8/8/8/8/3K4 w - - 75 1";
+        // Using rooks to avoid insufficient material
+        let fen = "3k4/8/8/8/8/8/8/R2K3R w - - 75 1";
         let mut position = position_from_fen(fen);
 
         assert_eq!(

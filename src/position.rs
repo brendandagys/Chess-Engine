@@ -1600,6 +1600,100 @@ impl Position {
             .count()
     }
 
+    /// Checks if the position has insufficient material to checkmate
+    ///
+    /// Returns true if:
+    /// - King vs King
+    /// - King + Bishop vs King
+    /// - King + Knight vs King
+    /// - King + Bishop vs King + Bishop (same color bishops)
+    ///
+    /// Note: K+B vs K+N and K+N vs K+N are NOT insufficient material
+    fn has_insufficient_material(&self) -> bool {
+        // If there are any pawns, there's sufficient material (pawn can promote)
+        if self.pawn_engine_score[Side::White as usize] != 0
+            || self.pawn_engine_score[Side::Black as usize] != 0
+        {
+            return false;
+        }
+
+        // Count pieces for each side (excluding kings)
+        let white_queens = self.board.bit_pieces[Side::White as usize][Piece::Queen as usize]
+            .0
+            .count_ones();
+        let white_rooks = self.board.bit_pieces[Side::White as usize][Piece::Rook as usize]
+            .0
+            .count_ones();
+        let white_bishops = self.board.bit_pieces[Side::White as usize][Piece::Bishop as usize]
+            .0
+            .count_ones();
+        let white_knights = self.board.bit_pieces[Side::White as usize][Piece::Knight as usize]
+            .0
+            .count_ones();
+
+        let black_queens = self.board.bit_pieces[Side::Black as usize][Piece::Queen as usize]
+            .0
+            .count_ones();
+        let black_rooks = self.board.bit_pieces[Side::Black as usize][Piece::Rook as usize]
+            .0
+            .count_ones();
+        let black_bishops = self.board.bit_pieces[Side::Black as usize][Piece::Bishop as usize]
+            .0
+            .count_ones();
+        let black_knights = self.board.bit_pieces[Side::Black as usize][Piece::Knight as usize]
+            .0
+            .count_ones();
+
+        // If either side has a queen or rook, there's sufficient material
+        if white_queens > 0 || white_rooks > 0 || black_queens > 0 || black_rooks > 0 {
+            return false;
+        }
+
+        // K vs K
+        if white_bishops == 0 && white_knights == 0 && black_bishops == 0 && black_knights == 0 {
+            return true;
+        }
+
+        // K+B vs K or K vs K+B
+        if (white_bishops == 1 && white_knights == 0 && black_bishops == 0 && black_knights == 0)
+            || (black_bishops == 1
+                && black_knights == 0
+                && white_bishops == 0
+                && white_knights == 0)
+        {
+            return true;
+        }
+
+        // K+N vs K or K vs K+N
+        if (white_knights == 1 && white_bishops == 0 && black_bishops == 0 && black_knights == 0)
+            || (black_knights == 1
+                && black_bishops == 0
+                && white_bishops == 0
+                && white_knights == 0)
+        {
+            return true;
+        }
+
+        // K+B vs K+B (same color bishops)
+        // Need to check if bishops are on same colored squares
+        if white_bishops == 1 && white_knights == 0 && black_bishops == 1 && black_knights == 0 {
+            let white_bishop_square =
+                self.board.bit_pieces[Side::White as usize][Piece::Bishop as usize].next_bit();
+            let black_bishop_square =
+                self.board.bit_pieces[Side::Black as usize][Piece::Bishop as usize].next_bit();
+
+            // Bishops are on same color if (rank + file) has same parity
+            let white_color = (white_bishop_square / 8 + white_bishop_square % 8) % 2;
+            let black_color = (black_bishop_square / 8 + black_bishop_square % 8) % 2;
+
+            if white_color == black_color {
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Checks the current game state and returns the result
     pub fn check_game_result(&mut self) -> GameResult {
         if self.repetitions() >= 2 {
@@ -1610,11 +1704,7 @@ impl Position {
             return GameResult::DrawByFiftyMoveRule;
         }
 
-        if self.pawn_engine_score[0] == 0
-            && self.pawn_engine_score[1] == 0
-            && self.piece_engine_score[0] <= 300
-            && self.piece_engine_score[1] <= 300
-        {
+        if self.has_insufficient_material() {
             return GameResult::DrawByInsufficientMaterial;
         }
 
