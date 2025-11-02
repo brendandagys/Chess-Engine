@@ -470,6 +470,140 @@ mod repetition_detection {
             "Should be draw by repetition"
         );
     }
+
+    #[test]
+    fn test_fifty_move_rule_draw() {
+        let fen = "k7/n7/8/8/8/8/N6N/N6K w - - 99 1";
+        let mut position = position_from_fen(fen);
+
+        assert_eq!(position.fifty, 99, "Should start with fifty counter at 99");
+
+        let move_made = position.make_move(Square::A2, Square::B4, None);
+        assert!(move_made, "White knight A2->B4 should be legal");
+
+        assert_eq!(
+            position.fifty, 100,
+            "After one more halfmove, fifty counter should be 100, got {}",
+            position.fifty
+        );
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            chess_engine::types::GameResult::DrawByFiftyMoveRule,
+            "Should be draw by fifty-move rule, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_fifty_move_rule_resets_on_pawn_move() {
+        // Position with pawns and space for kings to move
+        let fen = "4k3/4p3/8/8/8/8/4P3/3K4 w - - 40 1";
+        let mut position = position_from_fen(fen);
+
+        assert_eq!(position.fifty, 40, "Should start at 40");
+
+        // Make a pawn move - this should reset the counter
+        position.make_move(Square::E2, Square::E4, None);
+
+        assert_eq!(
+            position.fifty, 0,
+            "Pawn move should reset fifty counter to 0"
+        );
+
+        position.ply = 0;
+        position.first_move[0] = 0;
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            chess_engine::types::GameResult::InProgress,
+            "Game should be in progress after counter reset"
+        );
+    }
+
+    #[test]
+    fn test_fifty_move_rule_resets_on_capture() {
+        // Position where a capture is possible with kings having space
+        let fen = "3k4/8/8/4n3/4N3/8/8/3K4 w - - 98 1";
+        let mut position = position_from_fen(fen);
+
+        assert_eq!(position.fifty, 98, "Should start at 98");
+
+        // Capture the black knight
+        position.make_move(Square::E4, Square::E5, None);
+
+        assert_eq!(position.fifty, 0, "Capture should reset fifty counter to 0");
+
+        position.ply = 0;
+        position.first_move[0] = 0;
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            chess_engine::types::GameResult::InProgress,
+            "Game should be in progress after capture"
+        );
+    }
+
+    #[test]
+    fn test_fifty_move_rule_at_limit() {
+        // Position with rooks so kings have space to move
+        let fen = "4k3/8/8/8/8/8/8/R3K2R w - - 99 1";
+        let mut position = position_from_fen(fen);
+
+        position.ply = 0;
+        position.first_move[0] = 0;
+
+        let result_before = position.check_game_result();
+        assert_eq!(
+            result_before,
+            chess_engine::types::GameResult::InProgress,
+            "Game should still be in progress at 99 half-moves"
+        );
+
+        position.make_move(Square::A1, Square::B1, None);
+
+        assert_eq!(
+            position.fifty, 100,
+            "Should reach fifty-move limit after one more move"
+        );
+
+        // Generate moves again for the new position
+        position.ply = 0;
+        position.first_move[0] = 0;
+
+        // Now check that the game is a draw
+        let result_after = position.check_game_result();
+        assert_eq!(
+            result_after,
+            chess_engine::types::GameResult::DrawByFiftyMoveRule,
+            "Game should be draw by fifty-move rule at 100 halfmoves"
+        );
+    }
+
+    #[test]
+    fn test_fifty_move_counter_from_fen() {
+        // Load position with halfmove clock already set, with space for kings to move
+        let fen = "3k4/8/8/8/8/8/8/3K4 w - - 75 1";
+        let mut position = position_from_fen(fen);
+
+        assert_eq!(
+            position.fifty, 75,
+            "Fifty counter should be loaded from FEN"
+        );
+
+        position.ply = 0;
+        position.first_move[0] = 0;
+
+        let result = position.check_game_result();
+        assert_eq!(
+            result,
+            chess_engine::types::GameResult::InProgress,
+            "Game should still be in progress at 75 halfmoves"
+        );
+    }
 }
 
 mod move_ordering {

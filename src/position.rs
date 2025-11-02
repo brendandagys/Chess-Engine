@@ -1618,6 +1618,8 @@ impl Position {
             return GameResult::DrawByInsufficientMaterial;
         }
 
+        self.generate_moves_and_captures(self.side, |_, _, _| 0);
+
         // Check for legal moves for the player-now-to-move
         let mut has_legal_moves = false;
         for i in self.first_move[self.ply]..self.first_move[1 + self.ply] as isize {

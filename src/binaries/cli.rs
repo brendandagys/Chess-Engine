@@ -313,7 +313,6 @@ impl CLI {
                         continue;
                     }
 
-                    self.engine.generate_moves();
                     let game_result = self.engine.position.check_game_result();
                     self.print_result(game_result);
                     self.display_board();
