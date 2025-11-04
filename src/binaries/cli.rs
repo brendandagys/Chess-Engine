@@ -39,7 +39,7 @@ impl CLI {
     fn show_help(&self) {
         println!("\n======================= INFORMATION ======================");
         println!("h or help - Displays help on the commands");
-        println!("d or dd   - Displays board and toggles display setting");
+        println!("d and D   - Display board and toggle display setting");
         println!("moves     - Displays of list of possible moves");
         println!("fen       - Displays a FEN string for the current position");
         println!("f         - Flips the board");
@@ -55,6 +55,7 @@ impl CLI {
         println!("fen <FEN>    - Loads a FEN string");
         println!("sd <depth>   - Sets the maximum search depth");
         println!("st <seconds> - Sets the time limit per move in seconds");
+        println!("sn <nodes>   - Sets the maximum search nodes");
     }
 
     fn display_board(&self) {
@@ -141,15 +142,15 @@ impl CLI {
                 Err(_) => return,
             }
 
-            let command = input.trim().to_lowercase();
+            let command = input.trim();
 
             // COMMANDS WITHOUT PARAMETERS
-            match command.as_str() {
+            match command {
                 "d" => {
                     self.engine.position.display_board(self.flip);
                     continue;
                 }
-                "dd" => {
+                "D" => {
                     self.display_enabled = !self.display_enabled;
 
                     if self.display_enabled {
@@ -220,11 +221,12 @@ impl CLI {
             // COMMANDS WITH PARAMETERS
             if command.starts_with("fen ") {
                 let fen_str = &command[4..];
+                println!();
                 match Position::from_fen(fen_str) {
                     Ok(position) => {
                         self.engine.position = position;
-                        self.display_board();
                         println!("FEN loaded successfully");
+                        self.display_board();
                     }
                     Err(e) => println!("Error loading FEN: {}", e),
                 }
@@ -233,7 +235,7 @@ impl CLI {
 
             if command.starts_with("sd ") {
                 if let Ok(depth) = command[3..].parse::<u16>() {
-                    self.engine.search_settings.depth = depth;
+                    self.engine.search_settings.max_depth = depth;
                     println!("\nSearch maximum search depth set to {}", depth);
                 }
                 continue;
@@ -244,6 +246,14 @@ impl CLI {
                     let time_in_ms = time * 1000;
                     self.engine.search_settings.movetime = Some(time_in_ms);
                     println!("\nSearch time set to {} seconds", time);
+                }
+                continue;
+            }
+
+            if command.starts_with("sn ") {
+                if let Ok(nodes) = command[3..].parse::<usize>() {
+                    self.engine.search_settings.max_nodes = Some(nodes);
+                    println!("\nMaximum search nodes set to {}", nodes);
                 }
                 continue;
             }
@@ -363,27 +373,27 @@ impl CLI {
     }
 
     fn make_computer_move(&mut self) -> bool {
-        self.engine
-            .think(Some(|depth, score, position: &mut Position| {
-                print!(
-                    "│ {:>4} │ {:>12} │ {:>8} │ ",
-                    depth,
-                    format_with_commas((*position).nodes as u64),
-                    score
-                );
+        let (final_iterative_depth, _final_score) =
+            self.engine
+                .think(Some(|depth, score, position: &mut Position| {
+                    print!(
+                        "│ {:>4} │ {:>12} │ {:>8} │ ",
+                        depth,
+                        format_with_commas((*position).nodes as u64),
+                        score
+                    );
 
-                // Display best move
-                if let (Some(from), Some(to)) =
-                    ((*position).best_move_from, (*position).best_move_to)
-                {
-                    print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
-                } else {
-                    print!("{:^18} ", "");
-                }
+                    if let (Some(from), Some(to)) =
+                        ((*position).best_move_from, (*position).best_move_to)
+                    {
+                        print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
+                    } else {
+                        print!("{:^18} ", "");
+                    }
 
-                println!("│");
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }));
+                    println!("│");
+                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                }));
 
         println!("└──────┴──────────────┴──────────┴────────────────────┘");
 
@@ -427,8 +437,8 @@ impl CLI {
         println!(
             "│ Time:        {:>9} ms  │  Depth:  {:>4}     Quiescence: {:>3}  │",
             format_with_commas(elapsed_ms as u64),
-            self.engine.search_settings.depth,
-            self.engine.position.seldepth - self.engine.search_settings.depth as usize
+            final_iterative_depth,
+            self.engine.position.max_depth_reached - final_iterative_depth as usize
         );
         println!(
             "│ Nodes:       {:>12}  │  Qui-Nodes:    {:>12} ({}%)  │",

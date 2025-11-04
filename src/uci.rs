@@ -63,7 +63,7 @@ pub fn uci_loop(engine: &mut Engine) {
                             println!(
                                 "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
                                 depth,
-                                (*position).seldepth,
+                                (*position).max_depth_reached,
                                 score,
                                 (*position).nodes,
                                 nps,
@@ -104,7 +104,7 @@ pub fn uci_loop(engine: &mut Engine) {
                 println!("bestmove {}", result.best_move);
                 stdout.flush().unwrap();
             }
-            "stop" => {}
+            "stop" => {} // TODO: implement stop functionality
             "quit" => {
                 break;
             }
@@ -212,7 +212,8 @@ pub fn parse_go_command(engine: &mut Engine, command: &str) {
     let mut winc = None;
     let mut binc = None;
     let mut movetime = None;
-    // let mut depth = None;
+    let mut max_depth = None;
+    let mut max_nodes = None;
 
     let mut i = 1; // Skip "go"
     while i < parts.len() {
@@ -257,20 +258,26 @@ pub fn parse_go_command(engine: &mut Engine, command: &str) {
                     i += 1;
                 }
             }
-            // TODO: Implement fixed depth again?
-            //
-            // "depth" => {
-            //     if i + 1 < parts.len() {
-            //         depth = parts[i + 1].parse::<u16>().ok();
-            //         i += 2;
-            //     } else {
-            //         i += 1;
-            //     }
-            // }
-            // "infinite" => {
-            //     depth = Some(100);
-            //     i += 1;
-            // }
+            "depth" => {
+                if i + 1 < parts.len() {
+                    max_depth = parts[i + 1].parse::<u16>().ok();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "infinite" => {
+                max_depth = Some(100);
+                i += 1;
+            }
+            "nodes" => {
+                if i + 1 < parts.len() {
+                    max_nodes = parts[i + 1].parse::<usize>().ok();
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
             _ => {
                 i += 1;
             }
@@ -293,9 +300,12 @@ pub fn parse_go_command(engine: &mut Engine, command: &str) {
     if let Some(mt) = movetime {
         engine.search_settings.movetime = Some(mt);
     }
-    // if let Some(d) = depth {
-    //     engine.search_settings.depth = d;
-    // }
+    if let Some(max_depth) = max_depth {
+        engine.search_settings.max_depth = max_depth;
+    }
+    if let Some(nodes) = max_nodes {
+        engine.search_settings.max_nodes = Some(nodes);
+    }
 }
 
 #[cfg(test)]

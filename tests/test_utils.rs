@@ -86,7 +86,7 @@ pub fn position_from_fen(fen: &str) -> Position {
 
 pub fn engine_from_fen(fen: &str, depth: u16) -> Engine {
     ensure_zobrist_initialized();
-    let mut engine = Engine::new(None, None, None, None, None, Some(depth));
+    let mut engine = Engine::new(None, None, None, None, None, Some(depth), None);
     engine.position = Position::from_fen(fen).expect(&format!("Failed to load FEN: {}", fen));
     engine.position.set_material_scores();
     reset_move_state(&mut engine.position);

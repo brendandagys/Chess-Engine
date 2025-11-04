@@ -20,7 +20,7 @@ pub struct Position {
     pub fifty: u8,                    // Ply since last capture or pawn move (0-100) [50-move rule]
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
     pub qnodes: usize, // Quiescence nodes searched
-    pub seldepth: usize, // Maximum selective search depth reached (including quiescence)
+    pub max_depth_reached: usize, // Maximum quiescence depth reached in current search
     pub hash_hits: usize, // Number of transposition table hits
     pub hash_stores: usize, // Number of positions stored in hash table
     pub beta_cutoffs: usize, // Number of beta cutoffs (fail-highs)
@@ -108,7 +108,7 @@ impl Position {
             fifty: 0,
             nodes: 0,
             qnodes: 0,
-            seldepth: 0,
+            max_depth_reached: 0,
             hash_hits: 0,
             hash_stores: 0,
             beta_cutoffs: 0,
@@ -1149,6 +1149,7 @@ impl Position {
         }
     }
 
+    /// Generate all legal moves and captures for the given side
     pub fn generate_moves_and_captures<F>(&mut self, side: Side, get_history_score: F)
     where
         F: Fn(Side, Square, Square) -> isize,
@@ -1487,6 +1488,7 @@ impl Position {
         // Pawns
         let mut left_pawn_captures;
         let mut right_pawn_captures;
+        let mut unblocked_pawns;
 
         match side {
             Side::White => {
@@ -1500,6 +1502,10 @@ impl Position {
                         & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
                             >> 9),
                 );
+                unblocked_pawns = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & !(self.board.bit_all.0 >> 8),
+                );
             }
             Side::Black => {
                 left_pawn_captures = BitBoard(
@@ -1511,6 +1517,10 @@ impl Position {
                     self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
                         & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
                             << 7),
+                );
+                unblocked_pawns = BitBoard(
+                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
+                        & !(self.board.bit_all.0 << 8),
                 );
             }
         }
@@ -1576,6 +1586,34 @@ impl Position {
                     base_score,
                     &mut move_count,
                 );
+            }
+        }
+
+        // Generate quiet promotions (non-capturing pawn promotions)
+        while unblocked_pawns.0 != 0 {
+            let square_from = unblocked_pawns.next_bit_mut();
+
+            // Only consider pawns on the 7th rank (rank 6 in 0-indexed)
+            if self.ranks[side as usize][square_from as usize] == 6 {
+                let to = self.pawn_plus_index[side as usize][square_from as usize];
+
+                // Only add the move if the destination square is valid
+                if to >= 0 && to <= 63 {
+                    let square_to = to
+                        .try_into()
+                        .expect("Failed to convert pawn plus index to Square");
+
+                    let square_from_sq = square_from
+                        .try_into()
+                        .expect("Failed to convert square_from to Square");
+
+                    self.add_pawn_promotion_moves(
+                        square_from_sq,
+                        square_to,
+                        CAPTURE_SCORE as isize,
+                        &mut move_count,
+                    );
+                }
             }
         }
 
@@ -2333,13 +2371,24 @@ impl Position {
     /// 3. Update alpha if stand pat improves it
     /// 4. Generate and search all capture moves recursively until the position is quiet (base case)
     /// 5. Apply alpha-beta pruning to reduce search space
-    fn quiescence_search(&mut self, mut alpha: i32, beta: i32, depth: u16) -> i32 {
+    fn quiescence_search(
+        &mut self,
+        mut alpha: i32,
+        beta: i32,
+        depth: u16,
+        max_nodes: Option<usize>,
+    ) -> i32 {
         self.nodes += 1;
         self.qnodes += 1;
 
-        // Track selective depth
-        if self.ply > self.seldepth {
-            self.seldepth = self.ply;
+        if self.ply > self.max_depth_reached {
+            self.max_depth_reached = self.ply;
+        }
+
+        if let Some(max) = max_nodes {
+            if self.nodes >= max {
+                panic!("NodeLimitReached");
+            }
         }
 
         if depth == 0 {
@@ -2376,7 +2425,7 @@ impl Position {
                 continue;
             }
 
-            let score = -self.quiescence_search(-beta, -alpha, depth - 1);
+            let score = -self.quiescence_search(-beta, -alpha, depth - 1, max_nodes);
 
             self.take_back_move();
 
@@ -2494,12 +2543,19 @@ impl Position {
         beta: i32,
         mut depth: u16,
         history_table: &mut [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
+        max_nodes: Option<usize>,
     ) -> i32 {
         self.nodes += 1;
 
+        if let Some(max) = max_nodes {
+            if self.nodes >= max {
+                panic!("NodeLimitReached");
+            }
+        }
+
         // Track selective depth for main search too
-        if self.ply > self.seldepth {
-            self.seldepth = self.ply;
+        if self.ply > self.max_depth_reached {
+            self.max_depth_reached = self.ply;
         }
 
         // Check for draw by repetition (2-fold during search to avoid loops)
@@ -2513,7 +2569,7 @@ impl Position {
         }
 
         if depth == 0 {
-            return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH);
+            return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH, max_nodes);
         }
 
         if self.nodes & 1023 == 0 {
@@ -2635,12 +2691,10 @@ impl Position {
         let mut is_pv_node = true; // Track if this is still a PV node
 
         for move_index in move_list_start..move_list_end {
-            // Pick the best remaining move (selection sort)
             self.sort(move_index as isize);
 
             let current_move = self.move_list[move_index].unwrap();
 
-            // Try to make the move
             if !self.make_move(current_move.from, current_move.to, current_move.promote) {
                 // Move is illegal (leaves king in check)
                 continue;
@@ -2652,15 +2706,16 @@ impl Position {
 
             if is_pv_node {
                 // First move: search with full window (standard alpha-beta)
-                score = -self.search(-beta, -alpha, depth - 1, history_table);
+                score = -self.search(-beta, -alpha, depth - 1, history_table, max_nodes);
                 is_pv_node = false;
             } else {
                 // Non-PV moves: search with null/"zero" window (key optimization of PVS/NegaScout)
-                score = -self.search(-(alpha + 1), -alpha, depth - 1, history_table);
+                score = -self.search(-(alpha + 1), -alpha, depth - 1, history_table, max_nodes);
 
                 if score > alpha && score < beta {
                     // Re-search with full window to get exact score
-                    let re_search_score = -self.search(-beta, -alpha, depth - 1, history_table);
+                    let re_search_score =
+                        -self.search(-beta, -alpha, depth - 1, history_table, max_nodes);
                     self.take_back_move();
 
                     if re_search_score >= beta {
@@ -3001,6 +3056,8 @@ impl Position {
                 .hash
                 .update_en_passant(None, Some(COLUMN[pawn_to as usize]));
         }
+
+        position.generate_moves_and_captures(position.side, |_, _, _| 0);
 
         Ok(position)
     }

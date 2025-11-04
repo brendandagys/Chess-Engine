@@ -24,7 +24,8 @@ pub struct SearchSettings {
     pub winc: u64,
     pub binc: u64,
     pub movetime: Option<u64>,
-    pub depth: u16,
+    pub max_depth: u16,
+    pub max_nodes: Option<usize>,
 }
 
 pub struct SearchResult {
@@ -39,7 +40,7 @@ pub struct SearchResult {
 
 impl Default for Engine {
     fn default() -> Self {
-        Engine::new(None, None, None, None, None, None)
+        Engine::new(None, None, None, None, None, None, None)
     }
 }
 
@@ -50,7 +51,8 @@ impl Engine {
         winc: Option<u64>,
         binc: Option<u64>,
         movetime: Option<u64>,
-        depth: Option<u16>,
+        max_depth: Option<u16>,
+        max_nodes: Option<usize>,
     ) -> Self {
         initialize_zobrist_hash_tables();
 
@@ -58,7 +60,8 @@ impl Engine {
         let btime = btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let winc = winc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
         let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
-        let depth = depth.unwrap_or(DEFAULT_MAX_DEPTH);
+
+        let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
         let mut engine = Engine {
             position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
@@ -67,8 +70,9 @@ impl Engine {
                 btime,
                 winc,
                 binc,
-                depth,
                 movetime,
+                max_depth,
+                max_nodes,
             },
             computer_side: None,
             history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
@@ -101,7 +105,7 @@ impl Engine {
     where
         F: FnMut(u16, i32, &mut Position),
     {
-        // Don't print anything when "TimeExhausted" panics occur
+        // Don't print anything when known panics occur
         let default_hook: Arc<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static> =
             Arc::from(panic::take_hook());
 
@@ -109,7 +113,7 @@ impl Engine {
             let hook = Arc::clone(&default_hook);
             Box::new(move |panic_info: &panic::PanicHookInfo<'_>| {
                 if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                    if *msg == "TimeExhausted" {
+                    if matches!(*msg, "TimeExhausted" | "NodeLimitReached") {
                         return;
                     }
                 }
@@ -130,7 +134,7 @@ impl Engine {
         // Reset all search statistics
         self.position.nodes = 0;
         self.position.qnodes = 0;
-        self.position.seldepth = 0;
+        self.position.max_depth_reached = 0;
         self.position.hash_hits = 0;
         self.position.hash_stores = 0;
         self.position.beta_cutoffs = 0;
@@ -142,9 +146,9 @@ impl Engine {
         let mut final_score = 0;
 
         // Iterative deepening: search depth 1, 2, 3, ... maximum
-        for depth in 1..=self.search_settings.depth {
+        for depth in 1..=self.search_settings.max_depth {
             // Soft time limit (avoid starting a depth that won't finish)
-            if self.search_settings.depth > 1 && depth > 1 {
+            if self.search_settings.max_depth > 1 && depth > 1 {
                 if self.position.time_manager.is_soft_limit_reached() {
                     break;
                 }
@@ -160,13 +164,13 @@ impl Engine {
                     INFINITY_SCORE,
                     depth,
                     &mut self.history_table,
+                    self.search_settings.max_nodes,
                 )
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
                     if let Some(panic_message) = panic_payload.downcast_ref::<&str>() {
-                        if *panic_message == "TimeExhausted" {
-                            // Handle time exhaustion panic
+                        if matches!(*panic_message, "TimeExhausted" | "NodeLimitReached") {
                             while self.position.ply > 0 {
                                 self.position.take_back_move();
                             }
@@ -174,7 +178,6 @@ impl Engine {
                         }
                     }
 
-                    // Re-throw any other panics
                     panic::resume_unwind(panic_payload);
                 }
             };

@@ -24,6 +24,7 @@ fn random_u64() -> u64 {
 pub fn initialize_zobrist_hash_tables() {
     ZOBRIST_HASH_TABLE.get_or_init(|| {
         let mut hash_table = [[[0u64; NUM_SQUARES]; NUM_PIECE_TYPES]; NUM_SIDES];
+
         for side in Side::iter() {
             for piece in Piece::iter() {
                 if piece == Piece::Empty {
