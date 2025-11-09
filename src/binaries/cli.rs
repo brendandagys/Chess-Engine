@@ -27,7 +27,16 @@ struct CLI {
 
 impl CLI {
     fn new() -> Self {
-        let engine = Engine::default();
+        let engine = Engine::new(
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("opening_books/lpb-allbook.bin"),
+        );
 
         Self {
             engine,

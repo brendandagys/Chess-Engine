@@ -5,6 +5,7 @@ use crate::{
         DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS,
         INFINITY_SCORE, MATE_THRESHOLD, NUM_SIDES, NUM_SQUARES,
     },
+    polyglot::PolyglotBook,
     position::Position,
     time::TimeManager,
     types::{Piece, Side, Square},
@@ -15,6 +16,7 @@ pub struct Engine {
     pub search_settings: SearchSettings,
     pub computer_side: Option<Side>,
     history_table: [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES], // [color][from][to] = score
+    book: Option<PolyglotBook>,
 }
 
 pub struct SearchSettings {
@@ -39,7 +41,7 @@ pub struct SearchResult {
 
 impl Default for Engine {
     fn default() -> Self {
-        Engine::new(None, None, None, None, None, None, None)
+        Engine::new(None, None, None, None, None, None, None, None)
     }
 }
 
@@ -52,6 +54,7 @@ impl Engine {
         movetime: Option<u64>,
         max_depth: Option<u16>,
         max_nodes: Option<usize>,
+        book_path: Option<&str>,
     ) -> Self {
         let wtime = wtime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let btime = btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
@@ -59,6 +62,11 @@ impl Engine {
         let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
 
         let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
+
+        let book = match book_path {
+            Some(path) => PolyglotBook::load(path).ok(),
+            None => None,
+        };
 
         let mut engine = Engine {
             position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
@@ -73,6 +81,7 @@ impl Engine {
             },
             computer_side: None,
             history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
+            book,
         };
 
         engine.generate_moves();
@@ -118,6 +127,19 @@ impl Engine {
                 hook(panic_info);
             }) as Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>
         });
+
+        if let Some(book) = &self.book {
+            if let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
+            {
+                // TODO: Ensure we use the indicated promotion piece
+                let (from, to, _promotion_piece) = book_entry.decode_move();
+
+                self.position.hash_from = Some(from);
+                self.position.hash_to = Some(to);
+
+                return (0, 0);
+            }
+        }
 
         self.position.time_manager = TimeManager::new(
             self.search_settings.wtime,

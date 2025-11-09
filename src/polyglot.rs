@@ -1,6 +1,16 @@
+use std::{
+    fs::File,
+    io::{self, BufReader, Read},
+    path::Path,
+};
+
+use rand::Rng;
+
+use crate::types::{Piece, Square};
+
 /// http://hgm.nubati.net/book_format.html
 
-struct BookEntry {
+pub struct BookEntry {
     /// piece: 64 * kind_of_piece + 8 * row + file
     /// castle: 0: white short, 1: white long, 2: black short, 3: black long
     /// en passant: 0 [a] - 7 [h], none: 0
@@ -9,7 +19,7 @@ struct BookEntry {
     /// piece ^ castle ^ en passant ^ turn
     pub key: u64,
     /// bits                meaning
-    /// ===================================
+    /// ===========================
     /// 0,1,2               to file
     /// 3,4,5               to row
     /// 6,7,8               from file
@@ -17,7 +27,114 @@ struct BookEntry {
     /// 12,13,14            promotion piece (0=none, 1=knight, 2=bishop, 3=rook, 4=queen)
     pub move_: u16,
     pub weight: u16,
+    #[allow(dead_code)]
     pub learn: u32,
+}
+
+impl BookEntry {
+    /// Parse a 16-byte record from a Polyglot book file
+    fn from_bytes(bytes: &[u8]) -> Self {
+        let key = u64::from_be_bytes(bytes[0..8].try_into().unwrap());
+        let move_ = u16::from_be_bytes(bytes[8..10].try_into().unwrap());
+        let weight = u16::from_be_bytes(bytes[10..12].try_into().unwrap());
+        let learn = u32::from_be_bytes(bytes[12..16].try_into().unwrap());
+
+        BookEntry {
+            key,
+            move_,
+            weight,
+            learn,
+        }
+    }
+
+    /// Get the from/to squares and promotion piece from the encoded move
+    pub fn decode_move(&self) -> (Square, Square, Option<Piece>) {
+        let to_file = (self.move_ & 0b111) as u8;
+        let to_rank = ((self.move_ >> 3) & 0b111) as u8;
+        let from_file = ((self.move_ >> 6) & 0b111) as u8;
+        let from_rank = ((self.move_ >> 9) & 0b111) as u8;
+        let promotion_code = ((self.move_ >> 12) & 0b111) as u8;
+
+        let from_square = Square::try_from(from_rank * 8 + from_file).unwrap();
+        let to_square = Square::try_from(to_rank * 8 + to_file).unwrap();
+
+        let promotion_piece = match promotion_code {
+            1 => Some(Piece::Knight),
+            2 => Some(Piece::Bishop),
+            3 => Some(Piece::Rook),
+            4 => Some(Piece::Queen),
+            _ => None,
+        };
+
+        (from_square, to_square, promotion_piece)
+    }
+}
+
+pub struct PolyglotBook {
+    entries: Vec<BookEntry>,
+}
+
+impl PolyglotBook {
+    /// Load a Polyglot book from a .bin file
+    pub fn load(path: &str) -> io::Result<Self> {
+        let file = File::open(Path::new(path))?;
+        let mut reader = BufReader::new(file);
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf)?;
+
+        if buf.len() % 16 != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid Polyglot book file length (must be a multiple of 16 bytes)",
+            ));
+        }
+
+        let entries = buf
+            .chunks_exact(16)
+            .map(BookEntry::from_bytes)
+            .collect::<Vec<_>>();
+
+        Ok(Self { entries })
+    }
+
+    /// Find all book moves (sorted by key, ascending) for the given position hash key
+    fn find_moves(&self, key: u64) -> Vec<&BookEntry> {
+        let mut result = Vec::new();
+
+        if let Ok(mut index) = self.entries.binary_search_by_key(&key, |e| e.key) {
+            while index > 0 && self.entries[index - 1].key == key {
+                index -= 1;
+            }
+
+            while index < self.entries.len() && self.entries[index].key == key {
+                result.push(&self.entries[index]);
+                index += 1;
+            }
+        }
+
+        result
+    }
+
+    pub fn get_move_from_book(&self, key: u64) -> Option<&BookEntry> {
+        let moves = self.find_moves(key);
+
+        if moves.is_empty() {
+            return None;
+        }
+
+        let total_weight = moves.iter().map(|m| m.weight).sum();
+        let mut choice = rand::thread_rng().gen_range(0..total_weight);
+
+        for entry in moves {
+            if choice < entry.weight {
+                return Some(entry);
+            }
+
+            choice -= entry.weight;
+        }
+
+        None
+    }
 }
 
 /// RandomPiece     (offset:   0, length: 768)
