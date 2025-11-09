@@ -1,14 +1,10 @@
-mod test_utils;
-
 use chess_engine::{
     position::Position,
     types::{Piece, Side, Square},
 };
-use test_utils::*;
 
 #[test]
 fn test_load_starting_position_from_fen() {
-    ensure_zobrist_initialized();
     // Load the standard starting position
     let position = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     assert!(position.is_ok(), "Failed to load starting position FEN");
@@ -42,8 +38,6 @@ fn test_load_starting_position_from_fen() {
 
 #[test]
 fn test_load_custom_position_from_fen() {
-    ensure_zobrist_initialized();
-
     // Load a position with a specific setup (Scandinavian Defense after 1.e4 d5)
     let result =
         Position::from_fen("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 2");
@@ -75,8 +69,6 @@ fn test_load_custom_position_from_fen() {
 
 #[test]
 fn test_load_position_with_black_to_move() {
-    ensure_zobrist_initialized();
-
     // Load a position with black to move
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
     assert!(result.is_ok(), "Failed to load position with black to move");
@@ -89,8 +81,6 @@ fn test_load_position_with_black_to_move() {
 
 #[test]
 fn test_load_position_with_limited_castling() {
-    ensure_zobrist_initialized();
-
     // Position where only white can castle kingside and black can castle queenside
     let result = Position::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w Kq - 0 1");
     assert!(
@@ -106,8 +96,6 @@ fn test_load_position_with_limited_castling() {
 
 #[test]
 fn test_load_position_with_no_castling() {
-    ensure_zobrist_initialized();
-
     // Position with no castling rights
     let result = Position::from_fen("r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w - - 0 1");
     assert!(result.is_ok(), "Failed to load position with no castling");
@@ -120,8 +108,6 @@ fn test_load_position_with_no_castling() {
 
 #[test]
 fn test_halfmove_clock_parsing() {
-    ensure_zobrist_initialized();
-
     // Position with halfmove clock = 5
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 5 1");
     assert!(result.is_ok(), "Failed to load FEN with halfmove clock");
@@ -134,8 +120,6 @@ fn test_halfmove_clock_parsing() {
 
 #[test]
 fn test_fullmove_number_parsing_white_to_move() {
-    ensure_zobrist_initialized();
-
     // Position at move 10, white to move
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 10");
     assert!(result.is_ok(), "Failed to load FEN with fullmove number");
@@ -152,8 +136,6 @@ fn test_fullmove_number_parsing_white_to_move() {
 
 #[test]
 fn test_fullmove_number_parsing_black_to_move() {
-    ensure_zobrist_initialized();
-
     // Position at move 10, black to move
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 10");
     assert!(result.is_ok(), "Failed to load FEN with fullmove number");
@@ -170,8 +152,6 @@ fn test_fullmove_number_parsing_black_to_move() {
 
 #[test]
 fn test_default_values_when_fields_missing() {
-    ensure_zobrist_initialized();
-
     // Minimal FEN (only first 3 fields)
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq");
     assert!(
@@ -191,8 +171,6 @@ fn test_default_values_when_fields_missing() {
 
 #[test]
 fn test_en_passant_validation_white() {
-    ensure_zobrist_initialized();
-
     // Valid en passant square for white (rank 6)
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1");
     assert!(
@@ -210,8 +188,6 @@ fn test_en_passant_validation_white() {
 
 #[test]
 fn test_en_passant_validation_black() {
-    ensure_zobrist_initialized();
-
     // Valid en passant square for black (rank 3)
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
     assert!(
@@ -229,8 +205,6 @@ fn test_en_passant_validation_black() {
 
 #[test]
 fn test_complete_fen_with_all_fields() {
-    ensure_zobrist_initialized();
-
     // Complete FEN with all 6 fields
     let result =
         Position::from_fen("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq e6 3 3");
@@ -260,8 +234,6 @@ fn test_complete_fen_with_all_fields() {
 
 #[test]
 fn test_invalid_halfmove_clock() {
-    ensure_zobrist_initialized();
-
     // Invalid halfmove clock (not a number)
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - abc 1");
     assert!(
@@ -272,8 +244,6 @@ fn test_invalid_halfmove_clock() {
 
 #[test]
 fn test_invalid_fullmove_number() {
-    ensure_zobrist_initialized();
-
     // Invalid fullmove number (not a number)
     let result = Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 xyz");
     assert!(

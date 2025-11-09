@@ -1,10 +1,7 @@
 use crate::{
     constants::NUM_HASH_SLOTS,
+    polyglot::POLYGLOT,
     types::{Move, Piece, Side, Square},
-    zobrist_hash::{
-        ZOBRIST_CASTLE_HASH, ZOBRIST_EN_PASSANT_HASH, ZOBRIST_HASH_TABLE,
-        ZOBRIST_SIDE_TO_MOVE_HASH, initialize_zobrist_hash_tables,
-    },
 };
 
 /// An entry in the transposition table storing the best move for a position
@@ -64,8 +61,6 @@ pub struct Hash {
 
 impl Hash {
     pub fn new() -> Self {
-        initialize_zobrist_hash_tables();
-
         Self {
             current_key: 0,
             hash_table: HashTable::new(),
@@ -104,16 +99,29 @@ impl Hash {
             return;
         }
 
-        if let Some(hash_table) = ZOBRIST_HASH_TABLE.get() {
-            self.current_key ^= hash_table[side as usize][piece as usize][square as usize];
-        }
+        let piece_index = match (side, piece) {
+            (Side::Black, Piece::Pawn) => 0,
+            (Side::White, Piece::Pawn) => 1,
+            (Side::Black, Piece::Knight) => 2,
+            (Side::White, Piece::Knight) => 3,
+            (Side::Black, Piece::Bishop) => 4,
+            (Side::White, Piece::Bishop) => 5,
+            (Side::Black, Piece::Rook) => 6,
+            (Side::White, Piece::Rook) => 7,
+            (Side::Black, Piece::Queen) => 8,
+            (Side::White, Piece::Queen) => 9,
+            (Side::Black, Piece::King) => 10,
+            (Side::White, Piece::King) => 11,
+            _ => return,
+        };
+
+        self.current_key ^=
+            POLYGLOT[64 * piece_index + 8 * square.rank() as usize + square.file() as usize];
     }
 
-    /// Toggle side-to-move in the hash. Call this when switching turns.
+    /// Toggle side-to-move in the hash
     pub fn toggle_side_to_move(&mut self) {
-        if let Some(&hash_key) = ZOBRIST_SIDE_TO_MOVE_HASH.get() {
-            self.current_key ^= hash_key;
-        }
+        self.current_key ^= POLYGLOT[780];
     }
 
     /// Update castle rights in the hash when they change
@@ -122,24 +130,33 @@ impl Hash {
             return;
         }
 
-        if let Some(hash_table) = ZOBRIST_CASTLE_HASH.get() {
-            self.current_key ^= hash_table[old_castle as usize];
-            self.current_key ^= hash_table[new_castle as usize];
+        if old_castle & 1 != new_castle & 1 {
+            self.current_key ^= POLYGLOT[768]; // White short
+        }
+        if old_castle & 2 != new_castle & 2 {
+            self.current_key ^= POLYGLOT[769]; // White long
+        }
+        if old_castle & 4 != new_castle & 4 {
+            self.current_key ^= POLYGLOT[770]; // Black short
+        }
+        if old_castle & 8 != new_castle & 8 {
+            self.current_key ^= POLYGLOT[771]; // Black long
         }
     }
 
     /// Update en passant file in the hash when it changes
     pub fn update_en_passant(&mut self, old_file: Option<u8>, new_file: Option<u8>) {
-        if old_file == new_file {
-            return;
+        // Remove old en passant if it existed
+        if let Some(f) = old_file {
+            if f < 8 {
+                self.current_key ^= POLYGLOT[772 + f as usize];
+            }
         }
 
-        if let Some(hash_table) = ZOBRIST_EN_PASSANT_HASH.get() {
-            if let Some(file) = old_file {
-                self.current_key ^= hash_table[file as usize];
-            }
-            if let Some(file) = new_file {
-                self.current_key ^= hash_table[file as usize];
+        // Add new en passant if it exists
+        if let Some(f) = new_file {
+            if f < 8 {
+                self.current_key ^= POLYGLOT[772 + f as usize];
             }
         }
     }

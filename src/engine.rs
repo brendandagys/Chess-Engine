@@ -8,7 +8,6 @@ use crate::{
     position::Position,
     time::TimeManager,
     types::{Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
 
 pub struct Engine {
@@ -54,8 +53,6 @@ impl Engine {
         max_depth: Option<u16>,
         max_nodes: Option<usize>,
     ) -> Self {
-        initialize_zobrist_hash_tables();
-
         let wtime = wtime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let btime = btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let winc = winc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);

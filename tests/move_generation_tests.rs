@@ -9,7 +9,6 @@ use chess_engine::{
 use test_utils::*;
 
 fn empty_position_with_kings(side_to_move: Side) -> Position {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     position.board = Board::empty();
@@ -31,7 +30,6 @@ fn empty_position_with_kings(side_to_move: Side) -> Position {
 
 #[test]
 fn initial_position_generates_20_white_moves() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
     reset_move_state(&mut position);
 
@@ -45,7 +43,6 @@ fn initial_position_generates_20_white_moves() {
 
 #[test]
 fn initial_position_generates_20_black_moves() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
     reset_move_state(&mut position);
 
@@ -1131,7 +1128,6 @@ fn both_castles_available() {
 
 #[test]
 fn en_passant_capture_after_double_pawn_push() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     // This test demonstrates en passant after a double pawn push
@@ -1155,7 +1151,6 @@ fn en_passant_capture_after_double_pawn_push() {
 
 #[test]
 fn black_en_passant_capture() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     // White pawn advances two squares
@@ -1181,7 +1176,6 @@ fn black_en_passant_capture() {
 
 #[test]
 fn en_passant_in_captures_only() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     assert!(position.make_move(Square::E2, Square::E4, None));
@@ -1204,7 +1198,6 @@ fn en_passant_in_captures_only() {
 
 #[test]
 fn en_passant_both_sides_corrected() {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     // Set up a scenario where black has pawns on both sides

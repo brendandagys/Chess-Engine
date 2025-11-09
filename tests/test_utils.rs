@@ -1,13 +1,10 @@
 #![allow(dead_code)]
 
-use std::sync::Once;
-
 /// Shared test utilities for hash-related tests
 use chess_engine::{
     engine::Engine,
     position::Position,
     types::{Move, Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
 
 /// Create a test move
@@ -61,13 +58,6 @@ pub fn castle_states() -> Vec<u8> {
     (0..16).collect()
 }
 
-pub fn ensure_zobrist_initialized() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
-
 pub fn reset_move_state(position: &mut Position) {
     position.ply = 0;
     position.first_move.iter_mut().for_each(|entry| *entry = -1);
@@ -76,7 +66,6 @@ pub fn reset_move_state(position: &mut Position) {
 }
 
 pub fn position_from_fen(fen: &str) -> Position {
-    ensure_zobrist_initialized();
     let mut position = Position::from_fen(fen).expect(&format!("Failed to load FEN: {}", fen));
     position.set_material_scores();
     reset_move_state(&mut position);
@@ -85,7 +74,6 @@ pub fn position_from_fen(fen: &str) -> Position {
 }
 
 pub fn engine_from_fen(fen: &str, depth: u16) -> Engine {
-    ensure_zobrist_initialized();
     let mut engine = Engine::new(None, None, None, None, None, Some(depth), None);
     engine.position = Position::from_fen(fen).expect(&format!("Failed to load FEN: {}", fen));
     engine.position.set_material_scores();

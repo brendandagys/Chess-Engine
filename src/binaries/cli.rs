@@ -42,7 +42,7 @@ impl CLI {
         println!("d and D   - Display board and toggle display setting");
         println!("moves     - Displays of list of possible moves");
         println!("fen       - Displays a FEN string for the current position");
-        println!("f         - Flips the board");
+        println!("hash      - Displays hash key for the current position");
         println!("q or quit - Quits the program");
         println!("================= CONTROLLING THE ENGINE =================");
         println!("go        - Starts the engine from the current position");
@@ -53,6 +53,7 @@ impl CLI {
         println!("undo      - Takes back the last move");
         println!("===================== CONFIGURATION ======================");
         println!("fen <FEN>    - Loads a FEN string");
+        println!("f            - Flips the board");
         println!("sd <depth>   - Sets the maximum search depth");
         println!("st <seconds> - Sets the time limit per move in seconds");
         println!("sn <nodes>   - Sets the maximum search nodes");
@@ -176,6 +177,13 @@ impl CLI {
                 }
                 "fen" => {
                     println!("\n{}", self.engine.position.to_fen());
+                    continue;
+                }
+                "hash" => {
+                    println!(
+                        "\nHash key: {:016X}",
+                        self.engine.position.board.hash.current_key
+                    );
                     continue;
                 }
                 "moves" => {

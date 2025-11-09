@@ -4,30 +4,17 @@ mod test_utils;
 use chess_engine::{
     hash::Hash,
     types::{Piece, Side, Square},
-    zobrist_hash::initialize_zobrist_hash_tables,
 };
-use std::sync::Once;
 use test_utils::*;
-
-static INIT: Once = Once::new();
-
-/// Ensure Zobrist tables are initialized exactly once for all tests
-fn ensure_initialized() {
-    INIT.call_once(|| {
-        initialize_zobrist_hash_tables();
-    });
-}
 
 #[test]
 fn hash_new_initializes_to_zero() {
-    ensure_initialized();
     let hash = Hash::new();
     assert_eq!(hash.current_key, 0, "New hash should start at 0");
 }
 
 #[test]
 fn hash_store_and_probe_move() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let test_move = create_test_move(Square::E2, Square::E4);
 
@@ -52,7 +39,6 @@ fn hash_store_and_probe_move() {
 
 #[test]
 fn hash_probe_returns_none_for_different_key() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let test_move = create_test_move(Square::E2, Square::E4);
 
@@ -72,7 +58,6 @@ fn hash_probe_returns_none_for_different_key() {
 
 #[test]
 fn hash_store_overwrites_previous_entry() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let move1 = create_test_move(Square::E2, Square::E4);
     let move2 = create_test_move(Square::D2, Square::D4);
@@ -93,7 +78,6 @@ fn hash_store_overwrites_previous_entry() {
 
 #[test]
 fn hash_toggle_piece_changes_key() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -109,7 +93,6 @@ fn hash_toggle_piece_changes_key() {
 
 #[test]
 fn hash_toggle_piece_twice_cancels() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -126,7 +109,6 @@ fn hash_toggle_piece_twice_cancels() {
 
 #[test]
 fn hash_toggle_empty_piece_no_effect() {
-    ensure_initialized();
     let mut hash = Hash::new();
     hash.current_key = 12345;
     let initial_key = hash.current_key;
@@ -187,7 +169,6 @@ fn hash_different_sides_produce_different_hashes() {
 
 #[test]
 fn hash_toggle_side_to_move_changes_key() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -202,7 +183,6 @@ fn hash_toggle_side_to_move_changes_key() {
 
 #[test]
 fn hash_toggle_side_to_move_twice_cancels() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -218,7 +198,6 @@ fn hash_toggle_side_to_move_twice_cancels() {
 
 #[test]
 fn hash_update_castle_rights_same_state_no_change() {
-    ensure_initialized();
     let mut hash = Hash::new();
     hash.current_key = 12345;
     let initial_key = hash.current_key;
@@ -234,7 +213,6 @@ fn hash_update_castle_rights_same_state_no_change() {
 
 #[test]
 fn hash_update_castle_rights_different_states() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -249,7 +227,6 @@ fn hash_update_castle_rights_different_states() {
 
 #[test]
 fn hash_update_castle_rights_xor_property() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Go from state 0 to 5
@@ -270,7 +247,6 @@ fn hash_update_castle_rights_xor_property() {
 
 #[test]
 fn hash_update_en_passant_same_file_no_change() {
-    ensure_initialized();
     let mut hash = Hash::new();
     hash.current_key = 12345;
     let initial_key = hash.current_key;
@@ -286,7 +262,6 @@ fn hash_update_en_passant_same_file_no_change() {
 
 #[test]
 fn hash_update_en_passant_both_none_no_change() {
-    ensure_initialized();
     let mut hash = Hash::new();
     hash.current_key = 12345;
     let initial_key = hash.current_key;
@@ -302,7 +277,6 @@ fn hash_update_en_passant_both_none_no_change() {
 
 #[test]
 fn hash_update_en_passant_add_file() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let initial_key = hash.current_key;
 
@@ -317,7 +291,6 @@ fn hash_update_en_passant_add_file() {
 
 #[test]
 fn hash_update_en_passant_remove_file() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Add then remove en passant file
@@ -335,7 +308,6 @@ fn hash_update_en_passant_remove_file() {
 
 #[test]
 fn hash_update_en_passant_change_file() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Set to file 3
@@ -354,7 +326,6 @@ fn hash_update_en_passant_change_file() {
 
 #[test]
 fn hash_update_en_passant_xor_property() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Add file 4
@@ -377,7 +348,6 @@ fn hash_update_en_passant_xor_property() {
 
 #[test]
 fn hash_complex_position_builds_incrementally() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Build a position incrementally
@@ -407,7 +377,6 @@ fn hash_complex_position_builds_incrementally() {
 
 #[test]
 fn hash_move_simulation() {
-    ensure_initialized();
     let mut hash = Hash::new();
 
     // Starting position with pawn on e2
@@ -435,7 +404,6 @@ fn hash_move_simulation() {
 
 #[test]
 fn hash_table_collision_handling() {
-    ensure_initialized();
     let mut hash = Hash::new();
     let move1 = create_test_move(Square::E2, Square::E4);
     let move2 = create_test_move(Square::D2, Square::D4);

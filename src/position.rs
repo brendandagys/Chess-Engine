@@ -1724,6 +1724,24 @@ impl Position {
             .count()
     }
 
+    /// Helper method to check if a pawn at the given square has an adjacent opponent pawn
+    /// Used for Polyglot hashing and en passant detection
+    fn has_adjacent_opponent_pawn(&self, pawn_square: Square, side: Side) -> bool {
+        let opponent_pawns = self.board.bit_pieces[side as usize][Piece::Pawn as usize];
+
+        let left_adjacent = match pawn_square.as_bit() & self.not_a_file.0 {
+            0 => 0,
+            to => to >> 1,
+        };
+
+        let right_adjacent = match pawn_square.as_bit() & self.not_h_file.0 {
+            0 => 0,
+            to => to << 1,
+        };
+
+        (opponent_pawns.0 & (left_adjacent | right_adjacent)) != 0
+    }
+
     /// Checks if the position has insufficient material to checkmate
     ///
     /// Returns true if:
@@ -1864,24 +1882,19 @@ impl Position {
         GameResult::InProgress
     }
 
-    /// Get the en passant file (0-7 for files A-H) from the last move, if available
-    fn get_en_passant_file(&self) -> Option<u8> {
+    /// Get the en passant file (0-7 for files A-H) from the last move, if available.
+    /// Also return whether the pawn that just double-jumped has an adjacent opponent pawn
+    /// (needed for Polyglot hashing).
+    fn get_en_passant_file_and_adjacent_opponent_pawn(&self) -> Option<(u8, bool)> {
         if self.ply_from_start_of_game == 0 {
             return None;
         }
 
-        if let Some(last_game) = self.game_list[self.ply_from_start_of_game] {
-            let from = last_game.from;
-            let to = last_game.to;
-
-            // Check if a pawn just made a double-push
-            if self.board.value[to as usize] == Piece::Pawn && (from as i32 - to as i32).abs() == 16
-            {
-                return Some(COLUMN[to as usize]);
-            }
-        }
-
-        None
+        self.game_list[self.ply_from_start_of_game].and_then(|last_game| {
+            last_game
+                .en_passant_file
+                .map(|file| (file, last_game.en_passant_adjacent_opponent_pawn))
+        })
     }
 
     fn check_for_castling(&mut self, from: Square, to: Square) -> bool {
@@ -1954,19 +1967,19 @@ impl Position {
         game.castle = self.castle;
         game.hash = self.board.hash.current_key;
 
-        // Store old en passant file for hash update
-        let old_en_passant_file = self.get_en_passant_file();
-        game.en_passant_file = old_en_passant_file;
+        let (old_en_passant_file, old_adjacent_opponent_pawn) =
+            match self.get_en_passant_file_and_adjacent_opponent_pawn() {
+                Some((file, adjacent_opponent_pawn)) => (Some(file), adjacent_opponent_pawn),
+                None => (None, false),
+            };
 
         // Update the castle permissions
         let old_castle = self.castle;
         self.castle &= CASTLE_MASK[from as usize] & CASTLE_MASK[to as usize];
 
-        if old_castle != self.castle {
-            self.board
-                .hash
-                .update_castle_rights(old_castle, self.castle);
-        }
+        self.board
+            .hash
+            .update_castle_rights(old_castle, self.castle);
 
         self.ply += 1;
         self.ply_from_start_of_game += 1;
@@ -2016,31 +2029,43 @@ impl Position {
 
         self.set_material_scores();
 
-        let original_side = self.side;
+        let (new_en_passant_file, new_adjacent_opponent_pawn) = if self.board.value[to as usize]
+            == Piece::Pawn
+            && (to as i32 - from as i32).abs() == 16
+        {
+            (
+                Some(COLUMN[to as usize]),
+                self.has_adjacent_opponent_pawn(to, self.side.opponent()),
+            )
+        } else {
+            (None, false)
+        };
 
+        self.board.hash.update_en_passant(
+            match (old_en_passant_file, old_adjacent_opponent_pawn) {
+                (Some(file), true) => Some(file),
+                _ => None,
+            },
+            match (new_en_passant_file, new_adjacent_opponent_pawn) {
+                (Some(file), true) => Some(file),
+                _ => None,
+            },
+        );
+
+        game.en_passant_file = new_en_passant_file;
+        game.en_passant_adjacent_opponent_pawn = new_adjacent_opponent_pawn;
+
+        let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
+            .next_bit()
+            .try_into()
+            .expect("Failed to convert square to Square");
+
+        let original_side = self.side;
         self.side = self.side.opponent();
 
         self.board.hash.toggle_side_to_move();
 
         self.game_list[self.ply_from_start_of_game] = Some(game);
-
-        // Determine new en passant file after this move
-        let new_en_passant_file = if self.board.value[to as usize] == Piece::Pawn
-            && (from as i32 - to as i32).abs() == 16
-        {
-            Some(COLUMN[to as usize])
-        } else {
-            None
-        };
-
-        self.board
-            .hash
-            .update_en_passant(old_en_passant_file, new_en_passant_file);
-
-        let king_square = self.board.bit_pieces[original_side as usize][Piece::King as usize]
-            .next_bit()
-            .try_into()
-            .expect("Failed to convert square to Square");
 
         if self.is_square_attacked_by_side(original_side.opponent(), king_square) {
             self.take_back_move();
@@ -2052,8 +2077,6 @@ impl Position {
 
     pub fn take_back_move(&mut self) {
         let game = self.game_list[self.ply_from_start_of_game].expect("No game to take back");
-
-        let current_en_passant_file = self.get_en_passant_file();
 
         self.side = self.side.opponent();
 
@@ -2070,17 +2093,11 @@ impl Position {
         let old_castle = self.castle;
         self.castle = game.castle;
 
-        if old_castle != self.castle {
-            self.board
-                .hash
-                .update_castle_rights(old_castle, self.castle);
-        }
-
-        self.fifty = game.fifty;
-
         self.board
             .hash
-            .update_en_passant(current_en_passant_file, game.en_passant_file);
+            .update_castle_rights(old_castle, self.castle);
+
+        self.fifty = game.fifty;
 
         // En passant
         if self.board.value[to as usize] == Piece::Pawn
@@ -2128,6 +2145,23 @@ impl Position {
                 self.board
                     .update_piece(self.side, Piece::Rook, Square::D8, Square::A8);
             }
+        }
+
+        // `self.ply_from_start_of_game` has already been decremented above
+        if let Some(prev_game) = self.game_list[self.ply_from_start_of_game] {
+            self.board.hash.update_en_passant(
+                match (game.en_passant_file, game.en_passant_adjacent_opponent_pawn) {
+                    (Some(file), true) => Some(file),
+                    _ => None,
+                },
+                match (
+                    prev_game.en_passant_file,
+                    prev_game.en_passant_adjacent_opponent_pawn,
+                ) {
+                    (Some(file), true) => Some(file),
+                    _ => None,
+                },
+            );
         }
 
         self.set_material_scores();
@@ -3029,6 +3063,9 @@ impl Position {
 
         // Now that ply_from_start_of_game is set, we can create the synthetic game_list entry for en passant
         if let Some((pawn_from, pawn_to)) = ep_game_entry {
+            let adjacent_opponent_pawn =
+                position.has_adjacent_opponent_pawn(pawn_to, position.side);
+
             position.game_list[position.ply_from_start_of_game] = Some(Game {
                 from: pawn_from,
                 to: pawn_to,
@@ -3038,14 +3075,15 @@ impl Position {
                 castle: position.castle,
                 hash: position.board.hash.current_key,
                 en_passant_file: Some(COLUMN[pawn_to as usize]),
+                en_passant_adjacent_opponent_pawn: adjacent_opponent_pawn,
             });
         }
 
         // Initialize hash with castle rights
         position.board.hash.update_castle_rights(0, position.castle);
 
-        // Initialize hash with side-to-move (if Black to move, toggle the hash)
-        if position.side == Side::Black {
+        // Initialize hash with side-to-move (if White to move, toggle the hash)
+        if position.side == Side::White {
             position.board.hash.toggle_side_to_move();
         }
 

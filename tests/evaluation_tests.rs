@@ -24,7 +24,6 @@ use test_utils::*;
 
 /// Creates a position with only kings (required for valid chess positions)
 fn position_with_kings(side_to_move: Side) -> Position {
-    ensure_zobrist_initialized();
     let mut position = Position::new(TimeManager::default());
 
     position.board = Board::empty();

@@ -87,6 +87,15 @@ impl Square {
     pub fn as_bit(self) -> u64 {
         1u64 << (self as u64)
     }
+
+    /// 0-indexed (0-7)
+    pub fn rank(self) -> u8 {
+        self as u8 / NUM_FILES as u8
+    }
+    /// 0-indexed (0-7)
+    pub fn file(self) -> u8 {
+        (self as u8) % (NUM_FILES as u8)
+    }
 }
 impl From<BitBoard> for Square {
     fn from(bitboard: BitBoard) -> Self {
@@ -249,16 +258,17 @@ pub struct Move {
     pub score: isize, // Used when sorting moves. Higher scores are searched first.
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Game {
     pub from: Square,
     pub to: Square,
     pub promote: Option<Piece>,
-    pub capture: Piece,              // Can be an empty piece
-    pub fifty: u8,                   // Moves since last pawn move or capture (up to 100-ply)
-    pub castle: u8,                  // Castle permissions
-    pub hash: u64, // Zobrist hash key for position comparison and repetition detection
+    pub capture: Piece,                          // Can be an empty piece
+    pub fifty: u8,  // Moves since last pawn move or capture (up to 100-ply)
+    pub castle: u8, // Castle permissions
+    pub hash: u64,  // Zobrist hash key for position comparison and repetition detection
     pub en_passant_file: Option<u8>, // File (0-7) where en passant is available, if any
+    pub en_passant_adjacent_opponent_pawn: bool, // Whether opponent has a pawn adjacent to the en passant pawn
 }
 
 impl Game {
@@ -272,6 +282,7 @@ impl Game {
             castle: 0,
             hash: 0,
             en_passant_file: None,
+            en_passant_adjacent_opponent_pawn: false,
         }
     }
 }
@@ -293,6 +304,9 @@ impl Board {
         let mut bit_all = BitBoard(0);
 
         let mut hash = Hash::new();
+
+        hash.toggle_side_to_move();
+        hash.update_castle_rights(0, 0b1111);
 
         for square in Square::iter() {
             let piece = Piece::try_from(INIT_BOARD[square as usize]).unwrap();
