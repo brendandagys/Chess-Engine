@@ -302,20 +302,28 @@ mod depth_and_reduction {
 
     #[test]
     fn test_deeper_search_visits_more_nodes() {
-        let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+        // Use a larger stack size for debug builds where Position/Engine structs are large
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024) // 8 MB stack
+            .spawn(|| {
+                let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-        let mut engine1 = engine_from_fen(fen, 2);
-        engine1.think(None::<fn(u16, i32, &mut Position)>);
-        let nodes_depth2 = engine1.position.nodes;
+                let mut engine1 = engine_from_fen(fen, 2);
+                engine1.think(None::<fn(u16, i32, &mut Position)>);
+                let nodes_depth2 = engine1.position.nodes;
 
-        let mut engine2 = engine_from_fen(fen, 3);
-        engine2.think(None::<fn(u16, i32, &mut Position)>);
-        let nodes_depth3 = engine2.position.nodes;
+                let mut engine2 = engine_from_fen(fen, 3);
+                engine2.think(None::<fn(u16, i32, &mut Position)>);
+                let nodes_depth3 = engine2.position.nodes;
 
-        assert!(
-            nodes_depth3 > nodes_depth2,
-            "Depth 3 should visit more nodes than depth 2"
-        );
+                assert!(
+                    nodes_depth3 > nodes_depth2,
+                    "Depth 3 should visit more nodes than depth 2"
+                );
+            })
+            .expect("Failed to spawn thread")
+            .join()
+            .expect("Thread panicked");
     }
 
     #[test]
