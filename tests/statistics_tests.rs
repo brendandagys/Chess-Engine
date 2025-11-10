@@ -3,14 +3,14 @@ use chess_engine::position::Position;
 
 #[test]
 fn test_statistics_tracking() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(4), None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None);
 
     // Start from initial position
     engine.position =
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
 
     // Perform a search
-    let (depth, _score) = engine.think::<fn(u16, i32, &mut Position)>(None);
+    let result = engine.think::<fn(u16, i32, &mut Position)>(None);
 
     // Verify statistics are being tracked
     assert!(engine.position.nodes > 0, "Nodes should be tracked");
@@ -23,7 +23,7 @@ fn test_statistics_tracking() {
         "Selective depth should be tracked"
     );
     assert!(
-        engine.position.max_depth_reached >= depth as usize,
+        engine.position.max_depth_reached >= result.depth as usize,
         "Selective depth should be >= search depth"
     );
     assert!(
@@ -37,7 +37,7 @@ fn test_statistics_tracking() {
         "Total nodes should include quiescence nodes"
     );
 
-    println!("Statistics after depth {} search:", depth);
+    println!("Statistics after depth {} search:", result.depth);
     println!("  Nodes: {}", engine.position.nodes);
     println!("  Q-Nodes: {}", engine.position.qnodes);
     println!("  Selective Depth: {}", engine.position.max_depth_reached);
@@ -46,7 +46,7 @@ fn test_statistics_tracking() {
 
 #[test]
 fn test_statistics_reset_between_searches() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(3), None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None);
 
     // First search
     engine.position =
@@ -78,7 +78,7 @@ fn test_statistics_reset_between_searches() {
 
 #[test]
 fn test_nps_calculation() {
-    let mut engine = Engine::new(None, None, None, None, Some(100), Some(4), None);
+    let mut engine = Engine::new(None, None, None, None, Some(100), Some(4), None, None);
 
     engine.position =
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
@@ -103,30 +103,30 @@ fn test_nps_calculation() {
 
 #[test]
 fn test_max_depth_reached_exceeds_nominal_depth() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(3), None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None);
 
     // Use a tactical position that will require quiescence search
     engine.position =
         Position::from_fen("r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4")
             .unwrap();
 
-    let (depth, _score) = engine.think::<fn(u16, i32, &mut Position)>(None);
+    let result = engine.think::<fn(u16, i32, &mut Position)>(None);
 
     // In tactical positions, selective depth should be greater than nominal depth
     // due to quiescence search and check extensions
     println!(
         "Depth: {}, Selective Depth: {}",
-        depth, engine.position.max_depth_reached
+        result.depth, engine.position.max_depth_reached
     );
     assert!(
-        engine.position.max_depth_reached as u16 >= depth,
+        engine.position.max_depth_reached as u16 >= result.depth,
         "Selective depth should be at least the nominal depth"
     );
 }
 
 #[test]
 fn test_beta_cutoff_percentage() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(4), None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None);
 
     engine.position =
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();

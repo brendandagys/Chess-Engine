@@ -1,7 +1,4 @@
-use crate::{
-    engine::{Engine, SearchResult},
-    position::Position,
-};
+use crate::{engine::Engine, position::Position};
 use std::io::{self, Write};
 
 const ENGINE_NAME: &str = "Chess Engine";
@@ -47,61 +44,40 @@ pub fn uci_loop(engine: &mut Engine) {
             "go" => {
                 parse_go_command(engine, input);
 
-                let (final_depth, final_score) =
-                    engine.think(Some(|depth, score, position: &mut Position| {
-                        // Output UCI info line if requested
-                        if let (Some(from), Some(to)) =
-                            ((*position).best_move_from, (*position).best_move_to)
-                        {
-                            let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
-                            let nps = if time_ms > 0 {
-                                ((*position).nodes as u64 * 1000) / time_ms
-                            } else {
-                                0
-                            };
-                            let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
-                            println!(
-                                "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
-                                depth,
-                                (*position).max_depth_reached,
-                                score,
-                                (*position).nodes,
-                                nps,
-                                time_ms,
-                                best_move_uci
-                            );
-                        }
-                    }));
+                let result = engine.think(Some(|depth, score, position: &mut Position| {
+                    // Output UCI info line if requested
+                    if let (Some(from), Some(to)) =
+                        ((*position).best_move_from, (*position).best_move_to)
+                    {
+                        let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
+                        let nps = if time_ms > 0 {
+                            ((*position).nodes as u64 * 1000) / time_ms
+                        } else {
+                            0
+                        };
+                        let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
+                        println!(
+                            "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
+                            depth,
+                            (*position).max_depth_reached,
+                            score,
+                            (*position).nodes,
+                            nps,
+                            time_ms,
+                            best_move_uci
+                        );
+                    }
+                }));
 
-                let time_ms = engine.position.time_manager.elapsed().as_millis() as u64;
-
-                // Build SearchResult
-                let (best_move, ponder_move) = if let (Some(from), Some(to)) =
-                    (engine.position.best_move_from, engine.position.best_move_to)
-                {
-                    (Engine::move_to_uci_string(from, to, None, false), None)
+                // Output the best move
+                if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
+                    let best_move =
+                        Engine::move_to_uci_string(from, to, result.best_move_promote, false);
+                    println!("bestmove {}", best_move);
                 } else {
-                    (String::new(), None)
-                };
-
-                // Build PV (principal variation) - for now just the best move
-                let pv = if !best_move.is_empty() {
-                    vec![best_move.clone()]
-                } else {
-                    vec![]
-                };
-
-                let result = SearchResult {
-                    best_move,
-                    ponder_move,
-                    evaluation: final_score,
-                    depth: final_depth,
-                    nodes: engine.position.nodes as u64,
-                    pv,
-                    time_ms,
-                };
-
-                println!("bestmove {}", result.best_move);
+                    // No legal moves found
+                    println!("bestmove 0000");
+                }
                 stdout.flush().unwrap();
             }
             "stop" => {} // TODO: implement stop functionality

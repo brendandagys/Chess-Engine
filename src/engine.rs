@@ -30,12 +30,13 @@ pub struct SearchSettings {
 }
 
 pub struct SearchResult {
-    pub best_move: String,
-    pub ponder_move: Option<String>,
+    pub best_move_from: Option<Square>,
+    pub best_move_to: Option<Square>,
+    pub best_move_promote: Option<Piece>,
     pub evaluation: i32,
     pub depth: u16,
-    pub nodes: u64,
-    pub pv: Vec<String>,
+    pub nodes: usize,
+    pub qnodes: usize,
     pub time_ms: u64,
 }
 
@@ -106,8 +107,8 @@ impl Engine {
             .generate_moves_and_captures(self.position.side, |_, _, _| 0);
     }
 
-    /// Core iterative deepening search logic. Returns final depth reached and score achieved.
-    pub fn think<F>(&mut self, mut on_depth_complete: Option<F>) -> (u16, i32)
+    /// Core iterative deepening search logic. Returns SearchResult with best move and evaluation.
+    pub fn think<F>(&mut self, mut on_depth_complete: Option<F>) -> SearchResult
     where
         F: FnMut(u16, i32, &mut Position),
     {
@@ -131,13 +132,18 @@ impl Engine {
         if let Some(book) = &self.book {
             if let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
             {
-                // TODO: Ensure we use the indicated promotion piece
-                let (from, to, _promotion_piece) = book_entry.decode_move();
+                let (from, to, promotion_piece) = book_entry.decode_move();
 
-                self.position.hash_from = Some(from);
-                self.position.hash_to = Some(to);
-
-                return (0, 0);
+                return SearchResult {
+                    best_move_from: Some(from),
+                    best_move_to: Some(to),
+                    best_move_promote: promotion_piece,
+                    evaluation: 0,
+                    depth: 0,
+                    nodes: 0,
+                    qnodes: 0,
+                    time_ms: 0,
+                };
             }
         }
 
@@ -217,13 +223,16 @@ impl Engine {
             }
         }
 
-        // Set hash_from and hash_to for retrieval by caller from best move
-        if let (Some(from), Some(to)) = (self.position.best_move_from, self.position.best_move_to) {
-            self.position.hash_from = Some(from);
-            self.position.hash_to = Some(to);
+        SearchResult {
+            best_move_from: self.position.best_move_from,
+            best_move_to: self.position.best_move_to,
+            best_move_promote: None, // TODO: Get promotion piece from best move
+            evaluation: final_score,
+            depth: final_depth,
+            nodes: self.position.nodes,
+            qnodes: self.position.qnodes,
+            time_ms: self.position.time_manager.elapsed().as_millis() as u64,
         }
-
-        (final_depth, final_score)
     }
 
     /// Convert a move to UCI format (e.g., "e2e4", "e7e8q")

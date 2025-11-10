@@ -40,30 +40,32 @@ pub fn analyze_position(request: AnalyzeRequest) -> Result<AnalyzeResponse, Stri
         request.binc_ms,
         request.movetime_ms,
         request.depth,
+        None,
+        None,
     );
 
     engine.position =
         Position::from_fen(&request.fen).map_err(|e| format!("Invalid FEN: {}", e))?;
 
     // Generate moves to validate position is legal
-    engine
-        .position
-        .generate_moves_and_captures(engine.position.side);
+    engine.generate_moves();
 
     if engine.position.first_move[1] == 0 {
         return Err("No legal moves in position (checkmate or stalemate)".to_string());
     }
 
     // Perform the search
-    let result = engine.think_uci(false);
+    let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
-    if result.best_move.is_empty() {
-        return Err("No best move found".to_string());
-    }
+    // Get the best move
+    let (from, to, promote) =
+        if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
+            (from, to, result.best_move_promote)
+        } else {
+            return Err("No best move found".to_string());
+        };
 
-    // Apply the best move to get the resulting FEN
-    let (from, to, promote) = Engine::move_from_uci_string(&result.best_move)
-        .map_err(|e| format!("Failed to parse best move: {}", e))?;
+    let best_move = Engine::move_to_uci_string(from, to, promote, false);
 
     // Make the move on a copy of the position to get the resulting FEN
     if !engine.position.make_move(from, to, promote) {
@@ -76,12 +78,12 @@ pub fn analyze_position(request: AnalyzeRequest) -> Result<AnalyzeResponse, Stri
     engine.position.take_back_move();
 
     Ok(AnalyzeResponse {
-        best_move: result.best_move,
-        ponder_move: result.ponder_move,
+        best_move,
+        ponder_move: None,
         evaluation: result.evaluation,
         depth: result.depth,
-        nodes: result.nodes,
-        pv: result.pv,
+        nodes: result.nodes as u64,
+        pv: vec![Engine::move_to_uci_string(from, to, promote, false)],
         time_ms: result.time_ms,
         fen_after_move,
     })

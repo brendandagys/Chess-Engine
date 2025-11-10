@@ -25,9 +25,9 @@ use test_utils::*;
 fn search_position(fen: &str, depth: u16) -> Option<(Square, Square)> {
     let mut engine = engine_from_fen(fen, depth);
 
-    engine.think(None::<fn(u16, i32, &mut Position)>);
+    let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
-    match (engine.position.hash_from, engine.position.hash_to) {
+    match (result.best_move_from, result.best_move_to) {
         (Some(from), Some(to)) => Some((from, to)),
         _ => None,
     }
@@ -49,11 +49,11 @@ mod basic_search {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
 
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete and find a move
         assert!(
-            engine.position.hash_from.is_some() && engine.position.hash_to.is_some(),
+            result.best_move_from.is_some() && result.best_move_to.is_some(),
             "Search should find a best move"
         );
     }
@@ -63,9 +63,9 @@ mod basic_search {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 2);
 
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
-        if let (Some(from), Some(to)) = (engine.position.hash_from, engine.position.hash_to) {
+        if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
             // Generate legal moves and verify the returned move is legal
             let mut position = position_from_fen(fen);
             position.ply = 0;
@@ -99,11 +99,11 @@ mod tactical_search {
         // Back rank mate setup: white queen can deliver mate
         let fen = "6k1/5ppp/8/8/8/8/5PPP/4Q1K1 w - - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // The search should find a mating move
         assert!(
-            engine.position.hash_from.is_some() && engine.position.hash_to.is_some(),
+            result.best_move_from.is_some() && result.best_move_to.is_some(),
             "Should find mate in one"
         );
     }
@@ -113,10 +113,10 @@ mod tactical_search {
         // Opening position where white should develop pieces
         let fen = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a reasonable developing move
-        assert!(engine.position.hash_from.is_some(), "Should find a move");
+        assert!(result.best_move_from.is_some(), "Should find a move");
     }
 
     #[test]
@@ -133,11 +133,11 @@ mod tactical_search {
         // Position from the Italian Game
         let fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a move
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should find a move in tactical position"
         );
     }
@@ -151,10 +151,10 @@ mod quiescence_search {
         // Standard Sicilian Defense position with tactical possibilities
         let fen = "rnbqkb1r/pp1ppppp/5n2/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3";
         let mut engine = engine_from_fen(fen, 2);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should consider the position
-        assert!(engine.position.hash_from.is_some(), "Should find a move");
+        assert!(result.best_move_from.is_some(), "Should find a move");
     }
 
     #[test]
@@ -162,11 +162,11 @@ mod quiescence_search {
         // Quiet position - standard starting position
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 1);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should complete without hanging
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle quiet positions"
         );
     }
@@ -177,10 +177,10 @@ mod quiescence_search {
         // Kiwipete position with many tactical possibilities
         let fen = "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should find a legal move
-        assert!(engine.position.hash_from.is_some(), "Should find a move");
+        assert!(result.best_move_from.is_some(), "Should find a move");
     }
 }
 
@@ -207,11 +207,11 @@ mod check_extensions {
         // Complex position for testing en passant and promotion
         let fen = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should not crash or infinite loop
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle complex positions"
         );
     }
@@ -227,9 +227,9 @@ mod move_ordering {
         let mut engine = engine_from_fen(fen, 4);
 
         // First search to populate hash
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
-        let first_move = engine.position.hash_from;
+        let first_move = result.best_move_from;
 
         // Reset and search again - hash move should be tried first
         engine.position.ply = 0;
@@ -361,10 +361,10 @@ mod search_stability {
         // Position 5 from perft - complex middlegame
         let fen = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle complex positions"
         );
         assert!(engine.position.nodes > 0, "Should visit nodes");
@@ -375,12 +375,9 @@ mod search_stability {
         // Position 3 from perft - endgame-like position
         let fen = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
-        assert!(
-            engine.position.hash_from.is_some(),
-            "Should handle endgames"
-        );
+        assert!(result.best_move_from.is_some(), "Should handle endgames");
     }
 
     #[test]
@@ -389,10 +386,10 @@ mod search_stability {
         // Position 6 from perft - middlegame position
         let fen = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle middlegame positions"
         );
     }
@@ -406,10 +403,10 @@ mod edge_cases {
         // Position with castling rights on both sides
         let fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle positions with castling"
         );
     }
@@ -418,11 +415,11 @@ mod edge_cases {
     fn test_search_with_castling_rights() {
         let fen = "r3k2r/pppppppp/8/8/8/8/PPPPPPPP/R3K2R w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Should consider castling
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle castling positions"
         );
     }
@@ -431,10 +428,10 @@ mod edge_cases {
     fn test_search_in_opening() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle starting position"
         );
     }
@@ -444,10 +441,10 @@ mod edge_cases {
         // After 1.e4
         let fen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         assert!(
-            engine.position.hash_from.is_some(),
+            result.best_move_from.is_some(),
             "Should handle en passant availability"
         );
     }
@@ -501,11 +498,11 @@ mod principal_variation {
     fn test_pv_extracted_from_hash() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 4);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // PV should be stored in hash table
         assert!(
-            engine.position.hash_from.is_some() && engine.position.hash_to.is_some(),
+            result.best_move_from.is_some() && result.best_move_to.is_some(),
             "Should have PV move"
         );
 
@@ -518,10 +515,10 @@ mod principal_variation {
     fn test_pv_is_legal_sequence() {
         let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
         let mut engine = engine_from_fen(fen, 3);
-        engine.think(None::<fn(u16, i32, &mut Position)>);
+        let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
         // Try to make the PV moves
-        if let (Some(from), Some(to)) = (engine.position.hash_from, engine.position.hash_to) {
+        if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
             let move_legal = engine.position.make_move(from, to, None);
             if move_legal {
                 engine.position.take_back_move();

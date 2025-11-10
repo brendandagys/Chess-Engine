@@ -1,7 +1,7 @@
 use crate::{
     constants::{
         BISHOP_CAPTURE_SCORE, BISHOP_SCORE, CAPTURE_SCORE, CASTLE_MASK, COLUMN,
-        DEFAULT_MAX_QUIESCENCE_DEPTH, FLIPPED_BOARD_SQUARE, GAME_STACK, HASH_SCORE, INFINITY_SCORE,
+        DEFAULT_MAX_QUIESCENCE_DEPTH, FLIPPED_BOARD_SQUARE, GAME_STACK, INFINITY_SCORE,
         ISOLATED_PAWN_SCORE, KING_CAPTURE_SCORE, KING_ENDGAME_SCORE, KING_SCORE, KINGSIDE_DEFENSE,
         KNIGHT_CAPTURE_SCORE, KNIGHT_SCORE, MATE_SCORE, MAX_HISTORY_SCORE, MAX_PLY, MOVE_STACK,
         NORTH_EAST_DIAGONAL, NORTH_WEST_DIAGONAL, NUM_PIECE_TYPES, NUM_SIDES, NUM_SQUARES,
@@ -33,8 +33,6 @@ pub struct Position {
     pub castle: u8,                     // Castle permissions
     pub best_move_from: Option<Square>, // Found from the search/hash
     pub best_move_to: Option<Square>,   // Found from the search/hash
-    pub hash_from: Option<Square>,
-    pub hash_to: Option<Square>,
     pub time_manager: TimeManager,
     // STATIC
     pub side: Side,
@@ -121,8 +119,6 @@ impl Position {
             castle: 0b1111, // All castling rights available
             best_move_from: None,
             best_move_to: None,
-            hash_from: None,
-            hash_to: None,
             time_manager,
             side: Side::White,
             // Static
@@ -2339,51 +2335,6 @@ impl Position {
         let rank = (chars[1] as u8 - b'1') as usize;
 
         Some(rank * 8 + file)
-    }
-
-    #[allow(dead_code)]
-    fn set_hash_move(&mut self) {
-        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
-            if let Some(ref mut move_) = self.move_list[i as usize] {
-                if let (Some(hash_from), Some(hash_to)) = (self.hash_from, self.hash_to) {
-                    if move_.from == hash_from && move_.to == hash_to {
-                        move_.score = HASH_SCORE as isize;
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    fn display_principal_variation(&mut self, depth: u16) {
-        self.best_move_from = self.hash_from;
-        self.best_move_to = self.hash_to;
-
-        for _ in 0..depth {
-            if let Some(entry) = self.board.hash.probe() {
-                if let Some(move_) = entry.best_move {
-                    self.hash_from = Some(move_.from);
-                    self.hash_to = Some(move_.to);
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-
-            print!(" ");
-            Position::display_move(self.hash_from.unwrap(), self.hash_to.unwrap());
-            // NOTE: Hash table doesn't currently store promotion piece, so we use None which defaults to Queen
-            if !self.make_move(self.hash_from.unwrap(), self.hash_to.unwrap(), None) {
-                // Move failed (shouldn't happen with hash moves, but be safe)
-                break;
-            }
-        }
-
-        while self.ply > 0 {
-            self.take_back_move();
-        }
     }
 
     /// Quiescence search extends the regular search by only examining

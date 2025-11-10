@@ -390,51 +390,48 @@ impl CLI {
     }
 
     fn make_computer_move(&mut self) -> bool {
-        let (final_iterative_depth, _final_score) =
-            self.engine
-                .think(Some(|depth, score, position: &mut Position| {
-                    print!(
-                        "│ {:>4} │ {:>12} │ {:>8} │ ",
-                        depth,
-                        format_with_commas((*position).nodes as u64),
-                        score
-                    );
+        let result = self
+            .engine
+            .think(Some(|depth, score, position: &mut Position| {
+                print!(
+                    "│ {:>4} │ {:>12} │ {:>8} │ ",
+                    depth,
+                    format_with_commas((*position).nodes as u64),
+                    score
+                );
 
-                    if let (Some(from), Some(to)) =
-                        ((*position).best_move_from, (*position).best_move_to)
-                    {
-                        print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
-                    } else {
-                        print!("{:^18} ", "");
-                    }
+                if let (Some(from), Some(to)) =
+                    ((*position).best_move_from, (*position).best_move_to)
+                {
+                    print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
+                } else {
+                    print!("{:^18} ", "");
+                }
 
-                    println!("│");
-                    std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                }));
+                println!("│");
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+            }));
 
         println!("└──────┴──────────────┴──────────┴────────────────────┘");
 
-        let (hash_from, hash_to) = if let (Some(from), Some(to)) =
-            (self.engine.position.hash_from, self.engine.position.hash_to)
-        {
-            (from, to)
-        } else {
-            return false;
-        };
+        let (from, to, promote) =
+            if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
+                (from, to, result.best_move_promote)
+            } else {
+                return false;
+            };
 
-        self.engine.position.make_move(hash_from, hash_to, None);
+        self.engine.position.make_move(from, to, promote);
         self.engine.generate_moves();
 
-        let elapsed_ms = self.engine.position.time_manager.elapsed().as_millis();
-
         // Calculate statistics
-        let nodes_per_second = match elapsed_ms {
+        let nodes_per_second = match result.time_ms {
             0 => 0, // Avoid division by zero
-            ms => ((self.engine.position.nodes as f64 / ms as f64) * 1000.0) as u64,
+            ms => ((result.nodes as f64 / ms as f64) * 1000.0) as u64,
         };
 
-        let q_nodes = self.engine.position.qnodes;
-        let total_nodes = self.engine.position.nodes;
+        let q_nodes = result.qnodes;
+        let total_nodes = result.nodes;
         let main_nodes = total_nodes.saturating_sub(q_nodes);
         let q_percent = if total_nodes > 0 {
             (q_nodes as f64 / total_nodes as f64 * 100.0) as u64
@@ -453,9 +450,9 @@ impl CLI {
         println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
         println!(
             "│ Time:        {:>9} ms  │  Depth:  {:>4}     Quiescence: {:>3}  │",
-            format_with_commas(elapsed_ms as u64),
-            final_iterative_depth,
-            self.engine.position.max_depth_reached - final_iterative_depth as usize
+            format_with_commas(result.time_ms),
+            result.depth,
+            self.engine.position.max_depth_reached - result.depth as usize
         );
         println!(
             "│ Nodes:       {:>12}  │  Qui-Nodes:    {:>12} ({}%)  │",
@@ -473,7 +470,7 @@ impl CLI {
 
         println!(
             "\nComputer plays: \x1b[32m{}\x1b[0m",
-            Engine::move_to_uci_string(hash_from, hash_to, None, true)
+            Engine::move_to_uci_string(from, to, promote, true)
         );
 
         true
