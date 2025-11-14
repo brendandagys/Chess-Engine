@@ -1,8 +1,10 @@
 use chess_engine::engine::Engine;
 use chess_engine::position::Position;
-use chess_engine::types::{GameResult, Side};
+use chess_engine::types::{GameResult, MoveData, Side};
 use rand::Rng;
 use std::io::{self, Write};
+
+const OPENING_BOOK_PATH: &str = "opening_books/lpb-allbook.bin";
 
 fn format_with_commas(n: u64) -> String {
     let s = n.to_string();
@@ -35,7 +37,7 @@ impl CLI {
             None,
             None,
             None,
-            Some("opening_books/lpb-allbook.bin"),
+            Some(OPENING_BOOK_PATH),
         );
 
         Self {
@@ -63,6 +65,7 @@ impl CLI {
         println!("===================== CONFIGURATION ======================");
         println!("fen <FEN>    - Loads a FEN string");
         println!("f            - Flips the board");
+        println!("b or book    - Toggles opening book usage");
         println!("sd <depth>   - Sets the maximum search depth");
         println!("st <seconds> - Sets the time limit per move in seconds");
         println!("sn <nodes>   - Sets the maximum search nodes");
@@ -174,6 +177,19 @@ impl CLI {
                 "f" => {
                     self.flip = !self.flip;
                     self.display_board();
+                    continue;
+                }
+                "b" | "book" => {
+                    match self.engine.book {
+                        Some(_) => {
+                            self.engine.book = None;
+                            println!("\nOpening book disabled");
+                        }
+                        None => match self.engine.load_opening_book(OPENING_BOOK_PATH) {
+                            Ok(_) => println!("\nOpening book enabled"),
+                            Err(e) => println!("\nFailed to enable opening book: {}", e),
+                        },
+                    };
                     continue;
                 }
                 "go" => {
@@ -466,6 +482,32 @@ impl CLI {
             format_with_commas(beta_cutoffs as u64),
             cutoff_rate
         );
+
+        if !result.principal_variation.is_empty() {
+            println!("├─────────────────────────────────────────────────────────────────┤");
+            print!("│ PV:          ");
+            for (i, MoveData { from, to, promote }) in result.principal_variation.iter().enumerate()
+            {
+                if i > 0 {
+                    print!(" ");
+                }
+                print!(
+                    "{}",
+                    Engine::move_to_uci_string(*from, *to, *promote, false)
+                );
+
+                if i >= 7 {
+                    if result.principal_variation.len() > 8 {
+                        print!(" ...");
+                    }
+                    break;
+                }
+            }
+
+            let padding = 51usize.saturating_sub(result.principal_variation.len().min(8) * 6);
+            println!("{}", " ".repeat(padding));
+        }
+
         println!("└─────────────────────────────────────────────────────────────────┘");
 
         println!(

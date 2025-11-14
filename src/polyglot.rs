@@ -6,7 +6,7 @@ use std::{
 
 use rand::Rng;
 
-use crate::types::{Piece, Square};
+use crate::types::{MoveData, Piece, Square};
 
 /// http://hgm.nubati.net/book_format.html
 
@@ -48,7 +48,7 @@ impl BookEntry {
     }
 
     /// Get the from/to squares and promotion piece from the encoded move
-    pub fn decode_move(&self) -> (Square, Square, Option<Piece>) {
+    pub fn decode_move(&self) -> MoveData {
         let to_file = (self.move_ & 0b111) as u8;
         let to_rank = ((self.move_ >> 3) & 0b111) as u8;
         let from_file = ((self.move_ >> 6) & 0b111) as u8;
@@ -66,7 +66,11 @@ impl BookEntry {
             _ => None,
         };
 
-        (from_square, to_square, promotion_piece)
+        MoveData {
+            from: from_square,
+            to: to_square,
+            promote: promotion_piece,
+        }
     }
 }
 

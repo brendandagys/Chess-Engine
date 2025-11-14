@@ -30,9 +30,11 @@ pub struct Position {
     pub pawn_engine_score: [usize; NUM_SIDES],
     pub piece_engine_score: [usize; NUM_SIDES],
     pub material_score: [usize; NUM_SIDES],
-    pub castle: u8,                     // Castle permissions
-    pub best_move_from: Option<Square>, // Found from the search/hash
-    pub best_move_to: Option<Square>,   // Found from the search/hash
+    pub castle: u8,                                   // Castle permissions
+    pub best_move_from: Option<Square>,               // Found from the search/hash
+    pub best_move_to: Option<Square>,                 // Found from the search/hash
+    pub pv_table: [[Option<Move>; MAX_PLY]; MAX_PLY], // Principal variation: [ply][move_index]
+    pub pv_length: [usize; MAX_PLY],                  // Length of PV at each ply
     pub time_manager: TimeManager,
     // STATIC
     pub side: Side,
@@ -119,6 +121,8 @@ impl Position {
             castle: 0b1111, // All castling rights available
             best_move_from: None,
             best_move_to: None,
+            pv_table: [[None; MAX_PLY]; MAX_PLY],
+            pv_length: [0; MAX_PLY],
             time_manager,
             side: Side::White,
             // Static
@@ -2517,6 +2521,16 @@ impl Position {
         return score;
     }
 
+    fn update_principal_variation(&mut self, best_move: Move) {
+        self.pv_table[self.ply][self.ply] = Some(best_move);
+
+        for next_ply in (self.ply + 1)..self.pv_length[self.ply + 1] {
+            self.pv_table[self.ply][next_ply] = self.pv_table[self.ply + 1][next_ply];
+        }
+
+        self.pv_length[self.ply] = self.pv_length[self.ply + 1];
+    }
+
     /// Principal Variation Search with alpha-beta pruning.
     /// PVS is an enhancement of alpha-beta that uses null-window searches for better pruning.
     ///
@@ -2545,15 +2559,19 @@ impl Position {
 
         // Check for draw by repetition (2-fold during search to avoid loops)
         if self.ply > 0 && self.search_backward_for_identical_position() {
+            self.pv_length[self.ply] = self.ply;
             return 0;
         }
 
         // Check for draw by insufficient material
         if self.has_insufficient_material() {
+            self.pv_length[self.ply] = self.ply;
             return 0;
         }
 
         if depth == 0 {
+            // Initialize PV length for leaf nodes
+            self.pv_length[self.ply] = self.ply;
             return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH, max_nodes);
         }
 
@@ -2661,6 +2679,8 @@ impl Position {
             depth += 1; // Extend search depth if in check
         }
 
+        self.pv_length[self.ply] = self.ply;
+
         let mut best_score = -INFINITY_SCORE;
         let mut best_move: Option<Move> = None;
 
@@ -2701,6 +2721,7 @@ impl Position {
                     // Re-search with full window to get exact score
                     let re_search_score =
                         -self.search(-beta, -alpha, depth - 1, history_table, max_nodes);
+
                     self.take_back_move();
 
                     if re_search_score >= beta {
@@ -2715,6 +2736,8 @@ impl Position {
                     if re_search_score > best_score {
                         best_score = re_search_score;
                         best_move = Some(current_move);
+
+                        self.update_principal_variation(current_move);
 
                         if best_score > alpha {
                             alpha = best_score;
@@ -2735,6 +2758,8 @@ impl Position {
                 best_score = score;
                 best_move = Some(current_move);
 
+                self.update_principal_variation(current_move);
+
                 if best_score > alpha {
                     alpha = best_score;
                 }
@@ -2743,6 +2768,7 @@ impl Position {
 
         // Check for checkmate or stalemate
         if legal_moves_count == 0 {
+            self.pv_length[self.ply] = self.ply;
             if in_check {
                 // Checkmate - return negative score, prefer shorter mates
                 return -MATE_SCORE + self.ply as i32;
@@ -2754,6 +2780,7 @@ impl Position {
 
         // Check for draw by 50-move rule
         if self.fifty >= 100 {
+            self.pv_length[self.ply] = self.ply;
             return 0;
         }
 

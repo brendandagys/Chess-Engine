@@ -3,12 +3,12 @@ use std::{panic, sync::Arc};
 use crate::{
     constants::{
         DEFAULT_MAX_DEPTH, DEFAULT_PLAYER_INCREMENT_MS, DEFAULT_PLAYER_TIME_REMAINING_MS,
-        INFINITY_SCORE, MATE_THRESHOLD, NUM_SIDES, NUM_SQUARES,
+        INFINITY_SCORE, MATE_THRESHOLD, MAX_PLY, NUM_SIDES, NUM_SQUARES,
     },
     polyglot::PolyglotBook,
     position::Position,
     time::TimeManager,
-    types::{Piece, Side, Square},
+    types::{MoveData, Piece, Side, Square},
 };
 
 pub struct Engine {
@@ -16,7 +16,7 @@ pub struct Engine {
     pub search_settings: SearchSettings,
     pub computer_side: Option<Side>,
     history_table: [[[isize; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES], // [color][from][to] = score
-    book: Option<PolyglotBook>,
+    pub book: Option<PolyglotBook>,
 }
 
 pub struct SearchSettings {
@@ -38,6 +38,7 @@ pub struct SearchResult {
     pub nodes: usize,
     pub qnodes: usize,
     pub time_ms: u64,
+    pub principal_variation: Vec<MoveData>, // Principal variation: list of (from, to, promote)
 }
 
 impl Default for Engine {
@@ -64,11 +65,6 @@ impl Engine {
 
         let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
 
-        let book = match book_path {
-            Some(path) => PolyglotBook::load(path).ok(),
-            None => None,
-        };
-
         let mut engine = Engine {
             position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
             search_settings: SearchSettings {
@@ -82,11 +78,27 @@ impl Engine {
             },
             computer_side: None,
             history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
-            book,
+            book: None,
         };
+
+        if let Some(book_path) = book_path {
+            if let Err(e) = engine.load_opening_book(book_path) {
+                panic!("{}", e);
+            }
+        }
 
         engine.generate_moves();
         engine
+    }
+
+    pub fn load_opening_book(&mut self, book_path: &str) -> Result<(), String> {
+        match PolyglotBook::load(book_path) {
+            Ok(book) => {
+                self.book = Some(book);
+                Ok(())
+            }
+            Err(e) => Err(format!("Failed to load opening book: {}", e)),
+        }
     }
 
     pub fn new_game(&mut self) {
@@ -132,17 +144,18 @@ impl Engine {
         if let Some(book) = &self.book {
             if let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
             {
-                let (from, to, promotion_piece) = book_entry.decode_move();
+                let book_move = book_entry.decode_move();
 
                 return SearchResult {
-                    best_move_from: Some(from),
-                    best_move_to: Some(to),
-                    best_move_promote: promotion_piece,
+                    best_move_from: Some(book_move.from),
+                    best_move_to: Some(book_move.to),
+                    best_move_promote: book_move.promote,
                     evaluation: 0,
                     depth: 0,
                     nodes: 0,
                     qnodes: 0,
                     time_ms: 0,
+                    principal_variation: vec![book_move],
                 };
             }
         }
@@ -169,6 +182,10 @@ impl Engine {
 
         let mut final_depth = 0;
         let mut final_score = 0;
+
+        // Save the principal variation from the last completed iteration
+        let mut saved_pv_length = 0;
+        let mut saved_pv = [None; MAX_PLY];
 
         // Iterative deepening: search depth 1, 2, 3, ... maximum
         for depth in 1..=self.search_settings.max_depth {
@@ -199,6 +216,13 @@ impl Engine {
                             while self.position.ply > 0 {
                                 self.position.take_back_move();
                             }
+
+                            // Restore PV from the last completed iteration
+                            self.position.pv_length[0] = saved_pv_length;
+                            for i in 0..saved_pv_length {
+                                self.position.pv_table[0][i] = saved_pv[i];
+                            }
+
                             break;
                         }
                     }
@@ -214,6 +238,12 @@ impl Engine {
             final_depth = depth;
             final_score = score;
 
+            // Save the PV from this completed iteration
+            saved_pv_length = self.position.pv_length[0];
+            for i in 0..saved_pv_length {
+                saved_pv[i] = self.position.pv_table[0][i];
+            }
+
             if let Some(ref mut callback) = on_depth_complete {
                 callback(depth, score, &mut self.position);
             }
@@ -223,15 +253,29 @@ impl Engine {
             }
         }
 
+        // Collect principal variation from position
+        let mut principal_variation = Vec::new();
+
+        for i in 0..self.position.pv_length[0] {
+            if let Some(move_) = self.position.pv_table[0][i] {
+                principal_variation.push(MoveData {
+                    from: move_.from,
+                    to: move_.to,
+                    promote: move_.promote,
+                });
+            }
+        }
+
         SearchResult {
-            best_move_from: self.position.best_move_from,
-            best_move_to: self.position.best_move_to,
-            best_move_promote: None, // TODO: Get promotion piece from best move
+            best_move_from: principal_variation[0].from.into(),
+            best_move_to: principal_variation[0].to.into(),
+            best_move_promote: principal_variation[0].promote,
             evaluation: final_score,
             depth: final_depth,
             nodes: self.position.nodes,
             qnodes: self.position.qnodes,
             time_ms: self.position.time_manager.elapsed().as_millis() as u64,
+            principal_variation,
         }
     }
 
@@ -269,7 +313,7 @@ impl Engine {
     }
 
     /// Parse a UCI move string (e.g. "e2e4", "e7e8q") and return the from/to squares and promotion piece
-    pub fn move_from_uci_string(move_str: &str) -> Result<(Square, Square, Option<Piece>), String> {
+    pub fn move_from_uci_string(move_str: &str) -> Result<MoveData, String> {
         if move_str.len() < 4 || move_str.len() > 5 {
             return Err(format!("Invalid move string length: {}", move_str));
         }
@@ -313,7 +357,7 @@ impl Engine {
             None
         };
 
-        Ok((from, to, promote))
+        Ok(MoveData { from, to, promote })
     }
 
     /// Parse a move in algebraic notation (e2e4) and return the index in the move list

@@ -1,4 +1,4 @@
-use crate::{engine::Engine, position::Position};
+use crate::{engine::Engine, position::Position, types::MoveData};
 use std::io::{self, Write};
 
 const ENGINE_NAME: &str = "Chess Engine";
@@ -46,7 +46,7 @@ pub fn uci_loop(engine: &mut Engine) {
 
                 let result = engine.think(Some(|depth, score, position: &mut Position| {
                     // Output UCI info line if requested
-                    if let (Some(from), Some(to)) =
+                    if let (Some(_from), Some(_to)) =
                         ((*position).best_move_from, (*position).best_move_to)
                     {
                         let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
@@ -55,7 +55,20 @@ pub fn uci_loop(engine: &mut Engine) {
                         } else {
                             0
                         };
-                        let best_move_uci = Engine::move_to_uci_string(from, to, None, false);
+
+                        // Build PV string from pv_table at root (ply 0)
+                        let mut pv_string = String::new();
+                        for i in 0..position.pv_length[0] {
+                            if let Some(mv) = position.pv_table[0][i] {
+                                if !pv_string.is_empty() {
+                                    pv_string.push(' ');
+                                }
+                                pv_string.push_str(&Engine::move_to_uci_string(
+                                    mv.from, mv.to, mv.promote, false,
+                                ));
+                            }
+                        }
+
                         println!(
                             "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
                             depth,
@@ -64,7 +77,7 @@ pub fn uci_loop(engine: &mut Engine) {
                             (*position).nodes,
                             nps,
                             time_ms,
-                            best_move_uci
+                            pv_string
                         );
                     }
                 }));
@@ -142,7 +155,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
         while index < parts.len() {
             let move_str = parts[index];
 
-            let (from, to, promote) = Engine::move_from_uci_string(move_str)?;
+            let MoveData { from, to, promote } = Engine::move_from_uci_string(move_str)?;
 
             engine.generate_moves();
 
@@ -292,7 +305,7 @@ mod tests {
     fn test_move_from_uci_string() {
         let result = Engine::move_from_uci_string("e2e4");
         assert!(result.is_ok());
-        let (from, to, promote) = result.unwrap();
+        let MoveData { from, to, promote } = result.unwrap();
         assert_eq!(from as usize, 12); // e2
         assert_eq!(to as usize, 28); // e4
         assert_eq!(promote, None);
@@ -302,7 +315,7 @@ mod tests {
     fn test_move_from_uci_string_promotion() {
         let result = Engine::move_from_uci_string("e7e8q");
         assert!(result.is_ok());
-        let (from, to, promote) = result.unwrap();
+        let MoveData { from, to, promote } = result.unwrap();
         assert_eq!(from as usize, 52); // e7
         assert_eq!(to as usize, 60); // e8
         assert_eq!(promote, Some(crate::types::Piece::Queen));

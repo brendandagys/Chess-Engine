@@ -397,3 +397,10 @@ pub enum GameResult {
     DrawByFiftyMoveRule,
     DrawByInsufficientMaterial,
 }
+
+#[derive(Debug)]
+pub struct MoveData {
+    pub from: Square,
+    pub to: Square,
+    pub promote: Option<Piece>,
+}
