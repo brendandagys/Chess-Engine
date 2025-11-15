@@ -1,6 +1,6 @@
 use chess_engine::engine::Engine;
 use chess_engine::position::Position;
-use chess_engine::types::{GameResult, MoveData, Side};
+use chess_engine::types::{Difficulty, GameResult, MoveData, Side};
 use rand::Rng;
 use std::io::{self, Write};
 
@@ -38,6 +38,7 @@ impl CLI {
             None,
             None,
             Some(OPENING_BOOK_PATH),
+            Some(Difficulty::Medium),
         );
 
         Self {
@@ -66,6 +67,7 @@ impl CLI {
         println!("fen <FEN>    - Loads a FEN string");
         println!("f            - Flips the board");
         println!("b or book    - Toggles opening book usage");
+        println!("difficulty   - Sets the difficulty level");
         println!("sd <depth>   - Sets the maximum search depth");
         println!("st <seconds> - Sets the time limit per move in seconds");
         println!("sn <nodes>   - Sets the maximum search nodes");
@@ -115,22 +117,22 @@ impl CLI {
         self.display_board();
 
         loop {
-            println!("\n-------------------------------");
+            println!("\n-----------------------------------------------");
             println!(
-                "*   Ply: {} | To move: {:?}   *",
-                self.engine.position.ply_from_start_of_game, self.engine.position.side
+                "*   Ply: {} | Level: {} | To move: {:?}   *",
+                self.engine.position.ply_from_start_of_game,
+                self.engine
+                    .difficulty
+                    .map(|d| d.name())
+                    .unwrap_or("Not set"),
+                self.engine.position.side
             );
-            println!("-------------------------------");
+            println!("-----------------------------------------------");
 
             // Computer's turn
             if self.engine.computer_side == Some(self.engine.position.side) {
                 println!("\nComputer is thinking...");
-                println!("\n┌──────┬──────────────┬──────────┬────────────────────┐");
-                println!("│ DEPTH│    NODES     │  SCORE   │     BEST MOVE      │");
-                println!("├──────┼──────────────┼──────────┼────────────────────┤");
-
                 let has_legal_moves = self.make_computer_move();
-
                 let game_result = self.engine.position.check_game_result();
 
                 if has_legal_moves {
@@ -190,6 +192,10 @@ impl CLI {
                             Err(e) => println!("\nFailed to enable opening book: {}", e),
                         },
                     };
+                    continue;
+                }
+                "difficulty" => {
+                    self.handle_difficulty_command();
                     continue;
                 }
                 "go" => {
@@ -405,12 +411,56 @@ impl CLI {
         self.engine.computer_side = Some(player_side.opponent());
     }
 
+    fn handle_difficulty_command(&mut self) {
+        println!("\nChoose difficulty level:");
+        Difficulty::iter().enumerate().for_each(|(i, d)| {
+            println!("{}. {:<8} (depth {})", i + 1, d.name(), d.max_depth());
+        });
+        print!("\nEnter choice (1-6) > ");
+        io::stdout().flush().unwrap();
+
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(_) => {}
+            Err(_) => return,
+        }
+
+        println!();
+
+        let choice = input.trim();
+        let difficulty = match choice {
+            "1" => Difficulty::Beginner,
+            "2" => Difficulty::Easy,
+            "3" => Difficulty::Medium,
+            "4" => Difficulty::Hard,
+            "5" => Difficulty::Expert,
+            "6" => Difficulty::Master,
+            _ => {
+                println!("Invalid choice. Difficulty not changed.");
+                return;
+            }
+        };
+
+        self.engine.difficulty = Some(difficulty);
+        self.engine.search_settings.max_depth = difficulty.max_depth() as u16;
+
+        println!(
+            "Difficulty set to {} (max depth: {})",
+            difficulty.name(),
+            difficulty.max_depth()
+        );
+    }
+
     fn make_computer_move(&mut self) -> bool {
+        println!("\n┌───────┬──────────────┬──────────┬────────────────────┐");
+        println!("│ DEPTH │    NODES     │  SCORE   │     BEST MOVE      │");
+        println!("├───────┼──────────────┼──────────┼────────────────────┤");
+
         let result = self
             .engine
             .think(Some(|depth, score, position: &mut Position| {
                 print!(
-                    "│ {:>4} │ {:>12} │ {:>8} │ ",
+                    "│ {:>5} │ {:>12} │ {:>8} │ ",
                     depth,
                     format_with_commas((*position).nodes as u64),
                     score
@@ -428,7 +478,7 @@ impl CLI {
                 std::io::Write::flush(&mut std::io::stdout()).unwrap();
             }));
 
-        println!("└──────┴──────────────┴──────────┴────────────────────┘");
+        println!("└───────┴──────────────┴──────────┴────────────────────┘");
 
         let (from, to, promote) =
             if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
@@ -462,30 +512,8 @@ impl CLI {
             0
         };
 
-        // Display comprehensive statistics
-        println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
-        println!(
-            "│ Time:        {:>9} ms  │  Depth:  {:>4}     Quiescence: {:>3}  │",
-            format_with_commas(result.time_ms),
-            result.depth,
-            self.engine.position.max_depth_reached - result.depth as usize
-        );
-        println!(
-            "│ Nodes:       {:>12}  │  Qui-Nodes:    {:>12} ({}%)  │",
-            format_with_commas(total_nodes as u64),
-            format_with_commas(q_nodes as u64),
-            q_percent
-        );
-        println!(
-            "│ NPS:         {:>12}  │  β-Cutoffs:    {:>12} ({}%)  │",
-            format_with_commas(nodes_per_second),
-            format_with_commas(beta_cutoffs as u64),
-            cutoff_rate
-        );
-
-        if !result.principal_variation.is_empty() {
-            println!("├─────────────────────────────────────────────────────────────────┤");
-            print!("│ PV:          ");
+        if !result.from_book && !result.principal_variation.is_empty() {
+            print!("  PV:  ");
             for (i, MoveData { from, to, promote }) in result.principal_variation.iter().enumerate()
             {
                 if i > 0 {
@@ -508,10 +536,34 @@ impl CLI {
             println!("{}", " ".repeat(padding));
         }
 
-        println!("└─────────────────────────────────────────────────────────────────┘");
+        if !result.from_book {
+            // Display comprehensive statistics
+            println!("\n┌─────────────────────── SEARCH STATISTICS ───────────────────────┐");
+            println!(
+                "│ Time:        {:>9} ms  │  Depth:  {:>4}     Quiescence: {:>3}  │",
+                format_with_commas(result.time_ms),
+                result.depth,
+                self.engine.position.max_depth_reached - result.depth as usize
+            );
+            println!(
+                "│ Nodes:       {:>12}  │  Qui-Nodes:    {:>12} ({}%)  │",
+                format_with_commas(total_nodes as u64),
+                format_with_commas(q_nodes as u64),
+                q_percent
+            );
+            println!(
+                "│ NPS:         {:>12}  │  β-Cutoffs:    {:>12} ({}%)  │",
+                format_with_commas(nodes_per_second),
+                format_with_commas(beta_cutoffs as u64),
+                cutoff_rate
+            );
+
+            println!("└─────────────────────────────────────────────────────────────────┘");
+        }
 
         println!(
-            "\nComputer plays: \x1b[32m{}\x1b[0m",
+            "\nComputer plays{}: \x1b[32m{}\x1b[0m",
+            if result.from_book { " (book move)" } else { "" },
             Engine::move_to_uci_string(from, to, promote, true)
         );
 

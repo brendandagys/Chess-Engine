@@ -3,7 +3,7 @@ use chess_engine::{engine::Engine, position::Position};
 
 #[test]
 fn test_pv_collection() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(5), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(5), None, None, None);
 
     // Starting position is already loaded
     engine.generate_moves();
@@ -34,7 +34,7 @@ fn test_pv_collection() {
 
 #[test]
 fn test_pv_mate_in_one() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None, None);
 
     // Set up a mate in one position via new_game + moves
     // For now, just test with starting position
@@ -56,7 +56,7 @@ fn test_pv_mate_in_one() {
 
 #[test]
 fn test_pv_depth_increases() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(6), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(6), None, None, None);
 
     // Starting position is already loaded
     engine.generate_moves();

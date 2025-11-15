@@ -404,3 +404,49 @@ pub struct MoveData {
     pub to: Square,
     pub promote: Option<Piece>,
 }
+
+#[derive(Clone, Copy, Debug)]
+pub enum Difficulty {
+    Beginner,
+    Easy,
+    Medium,
+    Hard,
+    Expert,
+    Master,
+}
+
+impl Difficulty {
+    pub fn max_depth(&self) -> u8 {
+        match self {
+            Difficulty::Beginner => 2,
+            Difficulty::Easy => 4,
+            Difficulty::Medium => 5,
+            Difficulty::Hard => 6,
+            Difficulty::Expert => 8,
+            Difficulty::Master => 10,
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Difficulty::Beginner => "Beginner",
+            Difficulty::Easy => "Easy",
+            Difficulty::Medium => "Medium",
+            Difficulty::Hard => "Hard",
+            Difficulty::Expert => "Expert",
+            Difficulty::Master => "Master",
+        }
+    }
+
+    pub fn iter() -> impl Iterator<Item = Difficulty> {
+        [
+            Difficulty::Beginner,
+            Difficulty::Easy,
+            Difficulty::Medium,
+            Difficulty::Hard,
+            Difficulty::Expert,
+            Difficulty::Master,
+        ]
+        .into_iter()
+    }
+}

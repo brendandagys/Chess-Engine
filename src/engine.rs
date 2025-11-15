@@ -8,10 +8,11 @@ use crate::{
     polyglot::PolyglotBook,
     position::Position,
     time::TimeManager,
-    types::{MoveData, Piece, Side, Square},
+    types::{Difficulty, MoveData, Piece, Side, Square},
 };
 
 pub struct Engine {
+    pub difficulty: Option<Difficulty>,
     pub position: Position,
     pub search_settings: SearchSettings,
     pub computer_side: Option<Side>,
@@ -39,11 +40,12 @@ pub struct SearchResult {
     pub qnodes: usize,
     pub time_ms: u64,
     pub principal_variation: Vec<MoveData>, // Principal variation: list of (from, to, promote)
+    pub from_book: bool,
 }
 
 impl Default for Engine {
     fn default() -> Self {
-        Engine::new(None, None, None, None, None, None, None, None)
+        Engine::new(None, None, None, None, None, None, None, None, None)
     }
 }
 
@@ -57,13 +59,17 @@ impl Engine {
         max_depth: Option<u16>,
         max_nodes: Option<usize>,
         book_path: Option<&str>,
+        difficulty: Option<Difficulty>,
     ) -> Self {
         let wtime = wtime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let btime = btime.unwrap_or(DEFAULT_PLAYER_TIME_REMAINING_MS);
         let winc = winc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
         let binc = binc.unwrap_or(DEFAULT_PLAYER_INCREMENT_MS);
 
-        let max_depth = max_depth.unwrap_or(DEFAULT_MAX_DEPTH);
+        let max_depth = difficulty
+            .map(|d| d.max_depth() as u16)
+            .or(max_depth)
+            .unwrap_or(DEFAULT_MAX_DEPTH);
 
         let mut engine = Engine {
             position: Position::new(TimeManager::new(wtime, btime, winc, binc, movetime, true)),
@@ -79,6 +85,7 @@ impl Engine {
             computer_side: None,
             history_table: [[[0; NUM_SQUARES]; NUM_SQUARES]; NUM_SIDES],
             book: None,
+            difficulty,
         };
 
         if let Some(book_path) = book_path {
@@ -146,6 +153,14 @@ impl Engine {
             {
                 let book_move = book_entry.decode_move();
 
+                if let Some(ref mut callback) = on_depth_complete {
+                    self.position
+                        .make_move(book_move.from, book_move.to, book_move.promote);
+                    let score = -self.position.evaluate();
+                    self.position.take_back_move();
+                    callback(0, score, &mut self.position);
+                }
+
                 return SearchResult {
                     best_move_from: Some(book_move.from),
                     best_move_to: Some(book_move.to),
@@ -156,6 +171,7 @@ impl Engine {
                     qnodes: 0,
                     time_ms: 0,
                     principal_variation: vec![book_move],
+                    from_book: true,
                 };
             }
         }
@@ -276,6 +292,7 @@ impl Engine {
             qnodes: self.position.qnodes,
             time_ms: self.position.time_manager.elapsed().as_millis() as u64,
             principal_variation,
+            from_book: false,
         }
     }
 

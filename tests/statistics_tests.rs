@@ -3,7 +3,7 @@ use chess_engine::position::Position;
 
 #[test]
 fn test_statistics_tracking() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None, None);
 
     // Start from initial position
     engine.position =
@@ -46,7 +46,7 @@ fn test_statistics_tracking() {
 
 #[test]
 fn test_statistics_reset_between_searches() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None, None);
 
     // First search
     engine.position =
@@ -78,7 +78,7 @@ fn test_statistics_reset_between_searches() {
 
 #[test]
 fn test_nps_calculation() {
-    let mut engine = Engine::new(None, None, None, None, Some(100), Some(4), None, None);
+    let mut engine = Engine::new(None, None, None, None, Some(100), Some(4), None, None, None);
 
     engine.position =
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
@@ -103,7 +103,7 @@ fn test_nps_calculation() {
 
 #[test]
 fn test_max_depth_reached_exceeds_nominal_depth() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(3), None, None, None);
 
     // Use a tactical position that will require quiescence search
     engine.position =
@@ -126,7 +126,7 @@ fn test_max_depth_reached_exceeds_nominal_depth() {
 
 #[test]
 fn test_beta_cutoff_percentage() {
-    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None);
+    let mut engine = Engine::new(None, None, None, None, None, Some(4), None, None, None);
 
     engine.position =
         Position::from_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
