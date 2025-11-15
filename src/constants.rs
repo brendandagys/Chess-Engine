@@ -3,7 +3,7 @@ pub const DEFAULT_MAX_DEPTH: u16 = 9;
 pub const DEFAULT_MAX_QUIESCENCE_DEPTH: u16 = 6;
 
 /// Time
-pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 180_000; // 3 minutes
+pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 120_000; // 2 minutes
 pub const DEFAULT_PLAYER_INCREMENT_MS: u64 = 0;
 
 pub const DEFAULT_FIXED_TIME: bool = false;
