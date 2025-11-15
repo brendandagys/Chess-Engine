@@ -10,7 +10,6 @@ A high-performance chess engine written in Rust with UCI protocol support and a 
   - Quiescence search for tactical stability
   - Principal variation search (PVS)
   - History heuristic for move ordering
-  - Transposition tables with Zobrist hashing
 - **Opening Book**: Polyglot opening book support for strong opening play
 - **Difficulty Levels**: Multiple skill levels from beginner to expert
 - **Time Management**: Smart time allocation for timed games
