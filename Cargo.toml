@@ -1,8 +1,15 @@
 [package]
-name = "chess_engine"
+name = "bitboard_chess_engine"
 version = "0.1.0"
 edition = "2024"
-default-run = "chess_engine_cli"
+authors = ["Brendan Dagys <brendandagys@gmail.com>"]
+description = "A chess engine with UCI support"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/brendandagys/Chess-Engine"
+keywords = ["chess", "engine", "uci", "game"]
+categories = ["games"]
+
+default-run = "chess-engine-cli"
 
 [lib]
 name = "chess_engine"
@@ -16,9 +23,9 @@ serde_json = { version = "1.0", optional = true }
 api = ["serde", "serde_json"]
 
 [[bin]]
-name = "chess_engine_cli"
-path = "src/binaries/cli.rs"
+name = "chess-engine-cli"
+path = "src/bin/cli.rs"
 
 [[bin]]
-name = "chess_engine_uci"
-path = "src/binaries/uci.rs"
+name = "chess-engine-uci"
+path = "src/bin/uci.rs"

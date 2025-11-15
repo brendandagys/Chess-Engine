@@ -574,8 +574,7 @@ impl CLI {
 fn main() {
     println!("\n==============================");
     println!("|   Brendan's Chess Engine   |");
-    println!("==============================\n");
-    println!("Version 0.1, 2025-11-01");
+    println!("==============================");
     println!("\n\"h or help\" displays a list of commands\n");
 
     let mut cli = CLI::new();
