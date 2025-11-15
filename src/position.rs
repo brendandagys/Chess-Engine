@@ -1333,11 +1333,8 @@ impl Position {
             while knight_captures.0 != 0 {
                 let square_to = knight_captures.next_bit_mut();
 
-                // TODO: remove
                 let captured_piece = self.board.value[square_to as usize];
-                if captured_piece != Piece::Empty
-                    && (captured_piece as usize) < KNIGHT_CAPTURE_SCORE.len()
-                {
+                if (captured_piece as usize) < KNIGHT_CAPTURE_SCORE.len() {
                     self.add_capture(
                         square_from
                             .try_into()
@@ -1405,12 +1402,9 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                     {
-                        // TODO: remove
                         let captured_piece = self.board.value[square_to as usize];
                         // Skip if empty (shouldn't happen, but safeguard against board corruption)
-                        if captured_piece != Piece::Empty
-                            && (captured_piece as usize) < capture_score.len()
-                        {
+                        if (captured_piece as usize) < capture_score.len() {
                             self.add_capture(
                                 square_from
                                     .try_into()
@@ -1667,12 +1661,9 @@ impl Position {
                         & self.board.bit_all.0)
                         == 0
                     {
-                        // TODO: remove
                         let captured_piece = self.board.value[square_to as usize];
                         // Skip if empty (shouldn't happen, but safeguard against board corruption)
-                        if captured_piece != Piece::Empty
-                            && (captured_piece as usize) < capture_score.len()
-                        {
+                        if (captured_piece as usize) < capture_score.len() {
                             self.add_capture(
                                 attacking_square
                                     .try_into()
@@ -2438,8 +2429,7 @@ impl Position {
     fn check_if_time_is_exhausted(&mut self) {
         if self.time_manager.is_hard_limit_reached() {
             self.time_manager.stopped = true;
-            // TODO: Remove panic
-            panic!("TimeExhausted"); // This is like longjmp - jumps out immediately
+            panic!("TimeExhausted");
         }
     }
 
