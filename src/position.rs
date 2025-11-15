@@ -1729,17 +1729,17 @@ impl Position {
     fn has_adjacent_opponent_pawn(&self, pawn_square: Square, side: Side) -> bool {
         let opponent_pawns = self.board.bit_pieces[side as usize][Piece::Pawn as usize];
 
-        let left_adjacent = match pawn_square.as_bit() & self.not_a_file.0 {
+        let left_adjacent_square = match pawn_square.as_bit() & self.not_a_file.0 {
             0 => 0,
             to => to >> 1,
         };
 
-        let right_adjacent = match pawn_square.as_bit() & self.not_h_file.0 {
+        let right_adjacent_square = match pawn_square.as_bit() & self.not_h_file.0 {
             0 => 0,
             to => to << 1,
         };
 
-        (opponent_pawns.0 & (left_adjacent | right_adjacent)) != 0
+        (opponent_pawns.0 & (left_adjacent_square | right_adjacent_square)) != 0
     }
 
     /// Checks if the position has insufficient material to checkmate
@@ -2945,7 +2945,6 @@ impl Position {
             let ep_square_str = parts[3];
 
             if ep_square_str != "-" {
-                // Validate en passant square format (e.g., "e3", "d6")
                 if ep_square_str.len() == 2 {
                     let file = ep_square_str.chars().next().unwrap();
                     let rank = ep_square_str.chars().nth(1).unwrap();
@@ -2965,8 +2964,8 @@ impl Position {
                         .into());
                     }
 
-                    // Calculate the pawn's actual square and where it moved from
-                    // The en passant square is where the pawn would be captured, not where it moved to
+                    // Calculate the pawn's actual square and where it moved from.
+                    // The en passant square is where the pawn would be captured, not where it moved to.
                     let file_index = (file as u8 - b'a') as usize;
 
                     // If white to move, black pawn moved (ep_square is rank 6, pawn is on rank 5)
@@ -3018,8 +3017,8 @@ impl Position {
             position.fifty = 0;
         }
 
-        // Parse fullmove number (field 6) - increments after Black's move
-        // We convert this to ply_from_start_of_game (halfmoves)
+        // Parse fullmove number (field 6) - increments after Black's move.
+        // We convert this to ply_from_start_of_game (halfmoves).
         if parts.len() > 5 {
             match parts[5].parse::<usize>() {
                 Ok(fullmove) => {
