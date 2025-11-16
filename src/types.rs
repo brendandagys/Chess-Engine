@@ -418,12 +418,12 @@ pub enum Difficulty {
 impl Difficulty {
     pub fn max_depth(&self) -> u8 {
         match self {
-            Difficulty::Beginner => 2,
-            Difficulty::Easy => 4,
-            Difficulty::Medium => 5,
-            Difficulty::Hard => 6,
-            Difficulty::Expert => 8,
-            Difficulty::Master => 10,
+            Difficulty::Beginner => 1,
+            Difficulty::Easy => 2,
+            Difficulty::Medium => 3,
+            Difficulty::Hard => 4,
+            Difficulty::Expert => 5,
+            Difficulty::Master => 6,
         }
     }
 
