@@ -178,12 +178,12 @@ opening_books/      # Polyglot opening books
 
 The engine supports multiple difficulty settings:
 
-- **Beginner**: Depth 2, suitable for beginners
-- **Easy**: Depth 4, easy play
-- **Medium**: Depth 5, intermediate play
-- **Hard**: Depth 6, strong tactical play
-- **Expert**: Depth 8, very strong tactical play
-- **Master**: Depth 10, near-maximum strength
+- **Beginner**: Depth 1, suitable for beginners
+- **Easy**: Depth 2, easy play
+- **Medium**: Depth 3, intermediate play
+- **Hard**: Depth 4, strong tactical play
+- **Expert**: Depth 5, very strong tactical play
+- **Master**: Depth 6, extremely strong tactical play
 
 ## UCI Commands Supported
 
