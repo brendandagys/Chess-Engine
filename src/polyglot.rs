@@ -9,7 +9,6 @@ use rand::Rng;
 use crate::types::{MoveData, Piece, Square};
 
 /// http://hgm.nubati.net/book_format.html
-
 pub struct BookEntry {
     /// piece: 64 * kind_of_piece + 8 * row + file
     /// castle: 0: white short, 1: white long, 2: black short, 3: black long
@@ -145,7 +144,6 @@ impl PolyglotBook {
 /// RandomCastle    (offset: 768, length:   4)
 /// RandomEnPassant (offset: 772, length:   8)
 /// RandomTurn      (offset: 780, length:   1)
-
 pub const POLYGLOT: [u64; 781] = [
     // Piece
     0x9D39247E33776D41,

@@ -47,11 +47,11 @@ pub fn uci_loop(engine: &mut Engine) {
                 let result = engine.think(Some(|depth, score, position: &mut Position| {
                     // Output UCI info line if requested
                     if let (Some(_from), Some(_to)) =
-                        ((*position).best_move_from, (*position).best_move_to)
+                        (position.best_move_from, position.best_move_to)
                     {
-                        let time_ms = (*position).time_manager.elapsed().as_millis() as u64;
+                        let time_ms = position.time_manager.elapsed().as_millis() as u64;
                         let nps = if time_ms > 0 {
-                            ((*position).nodes as u64 * 1000) / time_ms
+                            (position.nodes as u64 * 1000) / time_ms
                         } else {
                             0
                         };
@@ -72,9 +72,9 @@ pub fn uci_loop(engine: &mut Engine) {
                         println!(
                             "info depth {} seldepth {} score cp {} nodes {} nps {} time {} pv {}",
                             depth,
-                            (*position).max_depth_reached,
+                            position.max_depth_reached,
                             score,
-                            (*position).nodes,
+                            position.nodes,
                             nps,
                             time_ms,
                             pv_string
@@ -164,15 +164,17 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
             for i in
                 engine.position.ply..engine.position.first_move[1 + engine.position.ply] as usize
             {
-                if let Some(mv) = engine.position.move_list[i] {
-                    if mv.from == from && mv.to == to && mv.promote == promote {
-                        // Make the move
-                        if !engine.position.make_move(from, to, None) {
-                            return Err(format!("Illegal move: {}", move_str));
-                        }
-                        found = true;
-                        break;
+                if let Some(mv) = engine.position.move_list[i]
+                    && mv.from == from
+                    && mv.to == to
+                    && mv.promote == promote
+                {
+                    // Make the move
+                    if !engine.position.make_move(from, to, None) {
+                        return Err(format!("Illegal move: {}", move_str));
                     }
+                    found = true;
+                    break;
                 }
             }
 

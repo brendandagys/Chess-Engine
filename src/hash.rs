@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// An entry in the transposition table storing the best move for a position
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct HashEntry {
     /// The hash key for collision detection (instead of separate "lock")
     pub hash_key: u64,
@@ -17,18 +17,8 @@ pub struct HashEntry {
     pub score: i32,
 }
 
-impl Default for HashEntry {
-    fn default() -> Self {
-        Self {
-            hash_key: 0,
-            best_move: None,
-            depth: 0,
-            score: 0,
-        }
-    }
-}
-
 /// Transposition table for storing positions and their best moves
+#[derive(Default)]
 pub struct HashTable {
     entries: Vec<HashEntry>,
 }
@@ -52,6 +42,7 @@ impl HashTable {
 }
 
 /// Zobrist hash manager for incremental position hashing
+#[derive(Default)]
 pub struct Hash {
     /// Current Zobrist hash key for the position
     pub current_key: u64,
@@ -147,17 +138,17 @@ impl Hash {
     /// Update en passant file in the hash when it changes
     pub fn update_en_passant(&mut self, old_file: Option<u8>, new_file: Option<u8>) {
         // Remove old en passant if it existed
-        if let Some(f) = old_file {
-            if f < 8 {
-                self.current_key ^= POLYGLOT[772 + f as usize];
-            }
+        if let Some(f) = old_file
+            && f < 8
+        {
+            self.current_key ^= POLYGLOT[772 + f as usize];
         }
 
         // Add new en passant if it exists
-        if let Some(f) = new_file {
-            if f < 8 {
-                self.current_key ^= POLYGLOT[772 + f as usize];
-            }
+        if let Some(f) = new_file
+            && f < 8
+        {
+            self.current_key ^= POLYGLOT[772 + f as usize];
         }
     }
 }

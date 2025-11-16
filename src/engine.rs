@@ -88,10 +88,10 @@ impl Engine {
             difficulty,
         };
 
-        if let Some(book_path) = book_path {
-            if let Err(e) = engine.load_opening_book(book_path) {
-                panic!("{}", e);
-            }
+        if let Some(book_path) = book_path
+            && let Err(e) = engine.load_opening_book(book_path)
+        {
+            panic!("{}", e);
         }
 
         engine.generate_moves();
@@ -138,42 +138,41 @@ impl Engine {
         panic::set_hook({
             let hook = Arc::clone(&default_hook);
             Box::new(move |panic_info: &panic::PanicHookInfo<'_>| {
-                if let Some(msg) = panic_info.payload().downcast_ref::<&str>() {
-                    if matches!(*msg, "TimeExhausted" | "NodeLimitReached") {
-                        return;
-                    }
+                if let Some(msg) = panic_info.payload().downcast_ref::<&str>()
+                    && matches!(*msg, "TimeExhausted" | "NodeLimitReached")
+                {
+                    return;
                 }
 
                 hook(panic_info);
             }) as Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>
         });
 
-        if let Some(book) = &self.book {
-            if let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
-            {
-                let book_move = book_entry.decode_move();
+        if let Some(book) = &self.book
+            && let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
+        {
+            let book_move = book_entry.decode_move();
 
-                if let Some(ref mut callback) = on_depth_complete {
-                    self.position
-                        .make_move(book_move.from, book_move.to, book_move.promote);
-                    let score = -self.position.evaluate();
-                    self.position.take_back_move();
-                    callback(0, score, &mut self.position);
-                }
-
-                return SearchResult {
-                    best_move_from: Some(book_move.from),
-                    best_move_to: Some(book_move.to),
-                    best_move_promote: book_move.promote,
-                    evaluation: 0,
-                    depth: 0,
-                    nodes: 0,
-                    qnodes: 0,
-                    time_ms: 0,
-                    principal_variation: vec![book_move],
-                    from_book: true,
-                };
+            if let Some(ref mut callback) = on_depth_complete {
+                self.position
+                    .make_move(book_move.from, book_move.to, book_move.promote);
+                let score = -self.position.evaluate();
+                self.position.take_back_move();
+                callback(0, score, &mut self.position);
             }
+
+            return SearchResult {
+                best_move_from: Some(book_move.from),
+                best_move_to: Some(book_move.to),
+                best_move_promote: book_move.promote,
+                evaluation: 0,
+                depth: 0,
+                nodes: 0,
+                qnodes: 0,
+                time_ms: 0,
+                principal_variation: vec![book_move],
+                from_book: true,
+            };
         }
 
         self.position.time_manager = TimeManager::new(
@@ -206,10 +205,11 @@ impl Engine {
         // Iterative deepening: search depth 1, 2, 3, ... maximum
         for depth in 1..=self.search_settings.max_depth {
             // Soft time limit (avoid starting a depth that won't finish)
-            if self.search_settings.max_depth > 1 && depth > 1 {
-                if self.position.time_manager.is_soft_limit_reached() {
-                    break;
-                }
+            if self.search_settings.max_depth > 1
+                && depth > 1
+                && self.position.time_manager.is_soft_limit_reached()
+            {
+                break;
             }
 
             self.position.ply = 0;
@@ -227,20 +227,19 @@ impl Engine {
             })) {
                 Ok(score) => score,
                 Err(panic_payload) => {
-                    if let Some(panic_message) = panic_payload.downcast_ref::<&str>() {
-                        if matches!(*panic_message, "TimeExhausted" | "NodeLimitReached") {
-                            while self.position.ply > 0 {
-                                self.position.take_back_move();
-                            }
-
-                            // Restore PV from the last completed iteration
-                            self.position.pv_length[0] = saved_pv_length;
-                            for i in 0..saved_pv_length {
-                                self.position.pv_table[0][i] = saved_pv[i];
-                            }
-
-                            break;
+                    if let Some(panic_message) = panic_payload.downcast_ref::<&str>()
+                        && matches!(*panic_message, "TimeExhausted" | "NodeLimitReached")
+                    {
+                        while self.position.ply > 0 {
+                            self.position.take_back_move();
                         }
+
+                        // Restore PV from the last completed iteration
+                        self.position.pv_length[0] = saved_pv_length;
+                        self.position.pv_table[0][..saved_pv_length]
+                            .copy_from_slice(&saved_pv[..saved_pv_length]);
+
+                        break;
                     }
 
                     panic::resume_unwind(panic_payload);
@@ -256,9 +255,8 @@ impl Engine {
 
             // Save the PV from this completed iteration
             saved_pv_length = self.position.pv_length[0];
-            for i in 0..saved_pv_length {
-                saved_pv[i] = self.position.pv_table[0][i];
-            }
+            saved_pv[..saved_pv_length]
+                .copy_from_slice(&self.position.pv_table[0][..saved_pv_length]);
 
             if let Some(ref mut callback) = on_depth_complete {
                 callback(depth, score, &mut self.position);
@@ -409,10 +407,11 @@ impl Engine {
         for i in self.position.first_move[self.position.ply]
             ..self.position.first_move[self.position.ply + 1]
         {
-            if let Some(mv) = self.position.move_list[i as usize] {
-                if mv.from as usize == from_square && mv.to as usize == to_square {
-                    return Some(i as usize);
-                }
+            if let Some(mv) = self.position.move_list[i as usize]
+                && mv.from as usize == from_square
+                && mv.to as usize == to_square
+            {
+                return Some(i as usize);
             }
         }
 

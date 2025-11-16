@@ -49,7 +49,7 @@ impl BitBoard {
 
     /// Returns the next bit, without mutating the original
     pub fn next_bit(&self) -> u8 {
-        let mut copy = self.clone();
+        let mut copy = *self; // BitBoard is Copy
         copy.next_bit_mut()
     }
 }
@@ -120,7 +120,7 @@ impl TryFrom<i32> for Square {
         }
 
         // SAFETY: We've verified value is in range 0-63, which matches our enum variants
-        Ok(unsafe { std::mem::transmute(value as u8) })
+        Ok(unsafe { std::mem::transmute::<u8, Square>(value as u8) })
     }
 }
 
@@ -134,7 +134,7 @@ impl TryFrom<u8> for Square {
         }
 
         // SAFETY: We've verified value is in range 0-63, which matches our enum variants
-        Ok(unsafe { std::mem::transmute(value) })
+        Ok(unsafe { std::mem::transmute::<u8, Square>(value) })
     }
 }
 
@@ -213,7 +213,7 @@ impl TryFrom<u8> for Piece {
         }
 
         // SAFETY: We've verified value is in range 0-6, which matches our enum variants
-        Ok(unsafe { std::mem::transmute(value) })
+        Ok(unsafe { std::mem::transmute::<u8, Piece>(value) })
     }
 }
 
@@ -246,7 +246,7 @@ impl TryFrom<u8> for Side {
             return Err("Side index out of range (must be 0-1)");
         }
 
-        Ok(unsafe { std::mem::transmute(value) })
+        Ok(unsafe { std::mem::transmute::<u8, Side>(value) })
     }
 }
 

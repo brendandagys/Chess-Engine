@@ -988,7 +988,7 @@ impl Position {
         );
 
         if b1.0 != 0 {
-            return Some(Square::try_from(b1.next_bit()).ok()?);
+            return Square::try_from(b1.next_bit()).ok();
         }
 
         for (piece, bit_moves) in [
@@ -1008,7 +1008,7 @@ impl Position {
                     & self.board.bit_all.0)
                     == 0
                 {
-                    return Some(Square::try_from(attacking_piece).ok()?);
+                    return Square::try_from(attacking_piece).ok();
                 }
             }
         }
@@ -1019,7 +1019,7 @@ impl Position {
         );
 
         if b1.0 != 0 {
-            return Some(Square::try_from(b1.next_bit()).ok()?);
+            return Square::try_from(b1.next_bit()).ok();
         }
 
         None
@@ -1202,9 +1202,7 @@ impl Position {
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
-            let square_to = victim
-                .try_into()
-                .expect("Failed to convert victim to Square");
+            let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
@@ -1234,9 +1232,7 @@ impl Position {
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
-            let square_to = victim
-                .try_into()
-                .expect("Failed to convert victim to Square");
+            let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
@@ -1522,9 +1518,7 @@ impl Position {
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
-            let square_to = victim
-                .try_into()
-                .expect("Failed to convert victim to Square");
+            let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
@@ -1554,9 +1548,7 @@ impl Position {
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
             let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
-            let square_to = victim
-                .try_into()
-                .expect("Failed to convert victim to Square");
+            let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
@@ -1845,13 +1837,13 @@ impl Position {
 
         // Check for legal moves for the player-now-to-move
         let mut has_legal_moves = false;
-        for i in self.first_move[self.ply]..self.first_move[1 + self.ply] as isize {
-            if let Some(mv) = self.move_list[i as usize] {
-                if self.make_move(mv.from, mv.to, mv.promote) {
-                    self.take_back_move();
-                    has_legal_moves = true;
-                    break;
-                }
+        for i in self.first_move[self.ply]..self.first_move[1 + self.ply] {
+            if let Some(mv) = self.move_list[i as usize]
+                && self.make_move(mv.from, mv.to, mv.promote)
+            {
+                self.take_back_move();
+                has_legal_moves = true;
+                break;
             }
         }
 
@@ -2290,18 +2282,16 @@ impl Position {
 
             if self.board.bit_pieces[side.opponent() as usize][Piece::Queen as usize].0 == 0 {
                 score[side as usize] += self.king_endgame_score[side as usize][king_square as usize]
-            } else {
-                if self.board.bit_pieces[side as usize][Piece::King as usize].0
-                    & self.mask_kingside.0
-                    != 0
-                {
-                    score[side as usize] += kingside_pawns[side as usize]
-                } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
-                    & self.mask_queenside.0
-                    != 0
-                {
-                    score[side as usize] += queenside_pawns[side as usize]
-                }
+            } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
+                & self.mask_kingside.0
+                != 0
+            {
+                score[side as usize] += kingside_pawns[side as usize]
+            } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
+                & self.mask_queenside.0
+                != 0
+            {
+                score[side as usize] += queenside_pawns[side as usize]
             }
         }
 
@@ -2365,10 +2355,10 @@ impl Position {
             self.max_depth_reached = self.ply;
         }
 
-        if let Some(max) = max_nodes {
-            if self.nodes >= max {
-                panic!("NodeLimitReached");
-            }
+        if let Some(max) = max_nodes
+            && self.nodes >= max
+        {
+            panic!("NodeLimitReached");
         }
 
         if depth == 0 {
@@ -2446,9 +2436,8 @@ impl Position {
             }
         }
 
-        let move_ = self.move_list[from_index as usize];
-        self.move_list[from_index as usize] = self.move_list[best_score_index as usize];
-        self.move_list[best_score_index as usize] = move_;
+        self.move_list
+            .swap(from_index as usize, best_score_index as usize);
     }
 
     /// Search backward for an identical position (repetition).
@@ -2460,10 +2449,10 @@ impl Position {
             .saturating_sub(self.fifty as usize);
 
         while cur >= end {
-            if let Some(game) = self.game_list[cur] {
-                if game.hash == self.board.hash.current_key {
-                    return true;
-                }
+            if let Some(game) = self.game_list[cur]
+                && game.hash == self.board.hash.current_key
+            {
+                return true;
             }
 
             if cur < 2 {
@@ -2508,7 +2497,7 @@ impl Position {
         }
 
         // Fail-soft (return the score that caused the cutoff instead of beta)
-        return score;
+        score
     }
 
     fn update_principal_variation(&mut self, best_move: Move) {
@@ -2536,10 +2525,10 @@ impl Position {
     ) -> i32 {
         self.nodes += 1;
 
-        if let Some(max) = max_nodes {
-            if self.nodes >= max {
-                panic!("NodeLimitReached");
-            }
+        if let Some(max) = max_nodes
+            && self.nodes >= max
+        {
+            panic!("NodeLimitReached");
         }
 
         // Track selective depth for main search too
@@ -2775,11 +2764,11 @@ impl Position {
         }
 
         // Store best move at root for retrieval later
-        if self.ply == 0 {
-            if let Some(mv) = best_move {
-                self.best_move_from = Some(mv.from);
-                self.best_move_to = Some(mv.to);
-            }
+        if self.ply == 0
+            && let Some(mv) = best_move
+        {
+            self.best_move_from = Some(mv.from);
+            self.best_move_to = Some(mv.to);
         }
 
         best_score
@@ -2811,8 +2800,10 @@ impl Position {
     /// position.from_fen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1").unwrap();
     /// ```
     pub fn from_fen(fen: &str) -> Result<Position, Box<dyn std::error::Error>> {
-        let mut position = Position::default();
-        position.board = Board::empty();
+        let mut position = Position {
+            board: Board::empty(),
+            ..Default::default()
+        };
 
         let parts: Vec<&str> = fen.split(' ').collect();
         if parts.is_empty() {
@@ -2973,7 +2964,7 @@ impl Position {
                     } else {
                         // White pawn moved from rank 2 to rank 4, ep_square is rank 3
                         let pawn_square = file_index + 3 * 8; // rank 4 (0-indexed: rank 3)
-                        let from_square = file_index + 1 * 8; // rank 2 (0-indexed: rank 1)
+                        let from_square = file_index + 8; // rank 2 (0-indexed: rank 1)
                         (
                             Square::try_from(pawn_square as u8)
                                 .map_err(|e| format!("Invalid pawn square: {}", e))?,

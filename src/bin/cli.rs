@@ -12,7 +12,7 @@ fn format_with_commas(n: u64) -> String {
     let len = s.len();
 
     for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             result.push(',');
         }
         result.push(ch);
@@ -21,13 +21,13 @@ fn format_with_commas(n: u64) -> String {
     result
 }
 
-struct CLI {
+struct CommandLineInterface {
     engine: Engine,
     display_enabled: bool,
     flip: bool,
 }
 
-impl CLI {
+impl CommandLineInterface {
     fn new() -> Self {
         let engine = Engine::new(
             None,
@@ -258,8 +258,7 @@ impl CLI {
             }
 
             // COMMANDS WITH PARAMETERS
-            if command.starts_with("fen ") {
-                let fen_str = &command[4..];
+            if let Some(fen_str) = command.strip_prefix("fen ") {
                 println!();
                 match Position::from_fen(fen_str) {
                     Ok(position) => {
@@ -462,13 +461,11 @@ impl CLI {
                 print!(
                     "│ {:>5} │ {:>12} │ {:>8} │ ",
                     depth,
-                    format_with_commas((*position).nodes as u64),
+                    format_with_commas(position.nodes as u64),
                     score
                 );
 
-                if let (Some(from), Some(to)) =
-                    ((*position).best_move_from, (*position).best_move_to)
-                {
+                if let (Some(from), Some(to)) = (position.best_move_from, position.best_move_to) {
                     print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
                 } else {
                     print!("{:^18} ", "");
@@ -577,7 +574,7 @@ fn main() {
     println!("==============================");
     println!("\n\"h or help\" displays a list of commands\n");
 
-    let mut cli = CLI::new();
+    let mut cli = CommandLineInterface::new();
     // cli.show_help();
     cli.run_main_loop();
 }
