@@ -13,7 +13,6 @@ A high-performance chess engine written in Rust with UCI protocol support and a 
 - **Opening Book**: Polyglot opening book support for strong opening play
 - **Difficulty Levels**: Multiple skill levels from beginner to expert
 - **Time Management**: Smart time allocation for timed games
-- **REST API Support**: Optional API feature for web integration
 - **Interactive CLI**: Play against the engine directly in your terminal
 
 ## Installation
@@ -22,13 +21,9 @@ A high-performance chess engine written in Rust with UCI protocol support and a 
 
 Add to your `Cargo.toml`:
 
-```toml
+````toml
 [dependencies]
 chess-engine = "0.1.0"
-
-# For API functionality:
-chess-engine = { version = "0.1.0", features = ["api"] }
-```
 
 ### Install Binaries
 
@@ -36,7 +31,7 @@ Install the command-line interface:
 
 ```bash
 cargo install chess-engine --bin chess-engine-cli
-```
+````
 
 Install the UCI interface:
 
@@ -114,33 +109,6 @@ fn main() {
 }
 ```
 
-### API Usage (with `api` feature)
-
-```rust
-use chess_engine::api::{analyze_position, AnalyzeRequest};
-
-fn main() {
-    let request = AnalyzeRequest {
-        fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string(),
-        depth: Some(10),
-        movetime_ms: None,
-        wtime_ms: None,
-        btime_ms: None,
-        winc_ms: None,
-        binc_ms: None,
-    };
-
-    match analyze_position(request) {
-        Ok(response) => {
-            println!("Best move: {}", response.best_move);
-            println!("Evaluation: {}", response.evaluation);
-            println!("PV: {:?}", response.pv);
-        }
-        Err(e) => eprintln!("Error: {}", e),
-    }
-}
-```
-
 ## Development
 
 ### Building from Source
@@ -194,22 +162,12 @@ src/
 ├── uci.rs          # UCI protocol implementation
 ├── time.rs         # Time management
 ├── polyglot.rs     # Opening book support
-├── api.rs          # REST API interface (optional)
 └── bin/
     ├── cli.rs      # Interactive CLI
     └── uci.rs      # UCI binary entry point
 
 tests/              # Comprehensive test suite
 opening_books/      # Polyglot opening books
-```
-
-## Feature Flags
-
-- `api`: Enables the API module with `serde` serialization support
-
-```toml
-[dependencies]
-chess-engine = { version = "0.1.0", features = ["api"] }
 ```
 
 ## Performance

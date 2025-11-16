@@ -6,6 +6,3 @@ pub mod position;
 pub mod time;
 pub mod types;
 pub mod uci;
-
-#[cfg(feature = "api")]
-pub mod api;
