@@ -91,7 +91,7 @@ impl Engine {
         if let Some(book_path) = book_path
             && let Err(e) = engine.load_opening_book(book_path)
         {
-            panic!("{}", e);
+            eprintln!("Could not load opening book: {e}");
         }
 
         engine.generate_moves();
