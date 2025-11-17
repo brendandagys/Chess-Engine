@@ -21,9 +21,10 @@ A high-performance chess engine written in Rust with UCI protocol support and a 
 
 Add to your `Cargo.toml`:
 
-````toml
+```toml
 [dependencies]
 chess-engine = "0.1.0"
+```
 
 ### Install Binaries
 
@@ -31,7 +32,7 @@ Install the command-line interface:
 
 ```bash
 cargo install chess-engine --bin chess-engine-cli
-````
+```
 
 Install the UCI interface:
 
