@@ -119,7 +119,13 @@ impl PolyglotBook {
     }
 
     pub fn get_move_from_book(&self, key: u64) -> Option<&BookEntry> {
+        println!("Looking for book moves for key: {key:#018x}");
         let moves = self.find_moves(key);
+        println!("Found {} book moves", moves.len());
+        println!(
+            "Book moves: {:?}",
+            moves.iter().map(|m| m.decode_move()).collect::<Vec<_>>()
+        );
 
         if moves.is_empty() {
             return None;
@@ -128,8 +134,12 @@ impl PolyglotBook {
         let total_weight = moves.iter().map(|m| m.weight).sum();
         let mut choice = rand::thread_rng().gen_range(0..total_weight);
 
+        println!("Total weight: {}, choice: {}", total_weight, choice);
+
         for entry in moves {
             if choice < entry.weight {
+                println!("Choosing move with weight {}", entry.weight);
+                println!("Selected book move: {:?}", entry.decode_move());
                 return Some(entry);
             }
 

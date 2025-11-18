@@ -23,7 +23,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-chess-engine = "0.1.2"
+chess-engine = "0.1"
 ```
 
 ### Install Binaries
