@@ -88,11 +88,14 @@ impl Engine {
             difficulty,
         };
 
+        println!("Book path: {:?}", book_path);
         if let Some(book_path) = book_path
             && let Err(e) = engine.load_opening_book(book_path)
         {
             eprintln!("Could not load opening book: {e}");
         }
+
+        println!("self.book: {:?}", engine.book.is_some());
 
         engine.generate_moves();
         engine
@@ -148,10 +151,17 @@ impl Engine {
             }) as Box<dyn Fn(&panic::PanicHookInfo<'_>) + Send + Sync + 'static>
         });
 
+        println!("Book: {:?}", self.book.is_some());
+
         if let Some(book) = &self.book
             && let Some(book_entry) = book.get_move_from_book(self.position.board.hash.current_key)
         {
+            println!("Book entry found");
             let book_move = book_entry.decode_move();
+            println!(
+                "Book move found: {}",
+                Engine::move_to_uci_string(book_move.from, book_move.to, book_move.promote, false)
+            );
 
             if let Some(ref mut callback) = on_depth_complete {
                 self.position

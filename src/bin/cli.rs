@@ -38,7 +38,7 @@ impl CommandLineInterface {
             None,
             None,
             Some(OPENING_BOOK_PATH),
-            Some(Difficulty::Medium),
+            None,
         );
 
         Self {
