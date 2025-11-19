@@ -3035,6 +3035,11 @@ impl Position {
                 en_passant_file: Some(COLUMN[pawn_to as usize]),
                 en_passant_adjacent_opponent_pawn: adjacent_opponent_pawn,
             });
+
+            position.board.hash.update_en_passant(
+                None,
+                adjacent_opponent_pawn.then_some(COLUMN[pawn_to as usize]),
+            );
         }
 
         // Initialize hash with castle rights
@@ -3043,14 +3048,6 @@ impl Position {
         // Initialize hash with side-to-move (if White to move, toggle the hash)
         if position.side == Side::White {
             position.board.hash.toggle_side_to_move();
-        }
-
-        // Initialize hash with en passant file if present
-        if let Some((_, pawn_to)) = ep_game_entry {
-            position
-                .board
-                .hash
-                .update_en_passant(None, Some(COLUMN[pawn_to as usize]));
         }
 
         position.generate_moves_and_captures(position.side, |_, _, _| 0);
