@@ -244,7 +244,7 @@ impl CommandLineInterface {
                     continue;
                 }
                 "q" | "quit" => {
-                    println!("\nProgram exiting");
+                    println!("\nGoodbye!\n");
                     break;
                 }
                 "switch" => {
