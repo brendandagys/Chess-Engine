@@ -1,8 +1,12 @@
-pub mod constants;
+mod bitboard;
+mod board;
+mod constants;
 pub mod engine;
 pub mod hash;
+mod piece;
 mod polyglot;
 pub mod position;
+mod square;
 pub mod time;
 pub mod types;
 pub mod uci;

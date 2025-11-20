@@ -1,6 +1,6 @@
-use chess_engine::engine::Engine;
+use chess_engine::engine::{Engine, SearchResult};
 use chess_engine::position::Position;
-use chess_engine::types::{Difficulty, GameResult, MoveData, Side};
+use chess_engine::types::{Board, Difficulty, GameState, MoveData, Side};
 use rand::Rng;
 use std::io::{self, Write};
 
@@ -79,10 +79,10 @@ impl CommandLineInterface {
         }
     }
 
-    fn print_result(&mut self, result: GameResult) {
+    fn print_result(&mut self, result: GameState) {
         match result {
-            GameResult::InProgress => {}
-            GameResult::Checkmate(winner) => {
+            GameState::InProgress => {}
+            GameState::Checkmate(winner) => {
                 self.display_board();
                 println!("\nGAME OVER");
 
@@ -94,19 +94,19 @@ impl CommandLineInterface {
 
                 self.engine.new_game();
             }
-            GameResult::Stalemate => {
+            GameState::Stalemate => {
                 println!("{{Stalemate}}");
                 self.engine.new_game();
             }
-            GameResult::DrawByRepetition => {
+            GameState::DrawByRepetition => {
                 println!("{{Draw by repetition}}");
                 self.engine.new_game();
             }
-            GameResult::DrawByFiftyMoveRule => {
+            GameState::DrawByFiftyMoveRule => {
                 println!("{{Draw by fifty move rule}}");
                 self.engine.new_game();
             }
-            GameResult::DrawByInsufficientMaterial => {
+            GameState::DrawByInsufficientMaterial => {
                 println!("{{Stalemate}}");
                 self.engine.new_game();
             }
@@ -133,7 +133,7 @@ impl CommandLineInterface {
             if self.engine.computer_side == Some(self.engine.position.side) {
                 println!("\nComputer is thinking...");
                 let has_legal_moves = self.make_computer_move();
-                let game_result = self.engine.position.check_game_result();
+                let game_result = self.engine.position.get_game_state();
 
                 if has_legal_moves {
                     self.print_result(game_result);
@@ -219,7 +219,15 @@ impl CommandLineInterface {
                 }
                 "moves" => {
                     println!();
-                    self.engine.display_legal_moves();
+                    for (index, move_str) in
+                        self.engine.position.get_legal_moves().iter().enumerate()
+                    {
+                        print!("{} ", move_str);
+                        if (index + 1) % 8 == 0 {
+                            println!();
+                        }
+                    }
+                    println!();
                     continue;
                 }
                 "new" => {
@@ -354,14 +362,14 @@ impl CommandLineInterface {
                 ((to_square / 8) as u8 + b'1') as char
             );
 
-            if let Some(move_idx) = self.engine.parse_move_string(&move_str) {
+            if let Some(move_idx) = self.engine.position.parse_move_string(&move_str) {
                 if let Some(mv) = self.engine.position.move_list[move_idx] {
                     if !self.engine.position.make_move(mv.from, mv.to, mv.promote) {
                         println!("\nILLEGAL MOVE!");
                         continue;
                     }
 
-                    let game_result = self.engine.position.check_game_result();
+                    let game_result = self.engine.position.get_game_state();
                     self.print_result(game_result);
                     self.display_board();
                 } else {
@@ -450,44 +458,7 @@ impl CommandLineInterface {
         );
     }
 
-    fn make_computer_move(&mut self) -> bool {
-        println!("\n┌───────┬──────────────┬──────────┬────────────────────┐");
-        println!("│ DEPTH │    NODES     │  SCORE   │     BEST MOVE      │");
-        println!("├───────┼──────────────┼──────────┼────────────────────┤");
-
-        let result = self
-            .engine
-            .think(Some(|depth, score, position: &mut Position| {
-                print!(
-                    "│ {:>5} │ {:>12} │ {:>8} │ ",
-                    depth,
-                    format_with_commas(position.nodes as u64),
-                    score
-                );
-
-                if let (Some(from), Some(to)) = (position.best_move_from, position.best_move_to) {
-                    print!("{:^18} ", Engine::move_to_uci_string(from, to, None, true));
-                } else {
-                    print!("{:^18} ", "");
-                }
-
-                println!("│");
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-            }));
-
-        println!("└───────┴──────────────┴──────────┴────────────────────┘");
-
-        let (from, to, promote) =
-            if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
-                (from, to, result.best_move_promote)
-            } else {
-                return false;
-            };
-
-        self.engine.position.make_move(from, to, promote);
-        self.engine.generate_moves();
-
-        // Calculate statistics
+    fn display_search_statistics(&self, result: &SearchResult) {
         let nodes_per_second = match result.time_ms {
             0 => 0, // Avoid division by zero
             ms => ((result.nodes as f64 / ms as f64) * 1000.0) as u64,
@@ -516,10 +487,7 @@ impl CommandLineInterface {
                 if i > 0 {
                     print!(" ");
                 }
-                print!(
-                    "{}",
-                    Engine::move_to_uci_string(*from, *to, *promote, false)
-                );
+                print!("{}", Board::move_to_uci_string(*from, *to, *promote, false));
 
                 if i >= 7 {
                     if result.principal_variation.len() > 8 {
@@ -557,11 +525,50 @@ impl CommandLineInterface {
 
             println!("└─────────────────────────────────────────────────────────────────┘");
         }
+    }
+
+    fn make_computer_move(&mut self) -> bool {
+        println!("\n┌───────┬──────────────┬──────────┬────────────────────┐");
+        println!("│ DEPTH │    NODES     │  SCORE   │     BEST MOVE      │");
+        println!("├───────┼──────────────┼──────────┼────────────────────┤");
+
+        let result = self
+            .engine
+            .think(Some(|depth, score, position: &mut Position| {
+                print!(
+                    "│ {:>5} │ {:>12} │ {:>8} │ ",
+                    depth,
+                    format_with_commas(position.nodes as u64),
+                    score
+                );
+
+                if let (Some(from), Some(to)) = (position.best_move_from, position.best_move_to) {
+                    print!("{:^18} ", Board::move_to_uci_string(from, to, None, true));
+                } else {
+                    print!("{:^18} ", "");
+                }
+
+                println!("│");
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+            }));
+
+        println!("└───────┴──────────────┴──────────┴────────────────────┘");
+
+        let (from, to, promote) =
+            if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
+                (from, to, result.best_move_promote)
+            } else {
+                return false;
+            };
+
+        self.engine.position.make_move(from, to, promote);
+        self.engine.generate_moves();
+        self.display_search_statistics(&result);
 
         println!(
             "\nComputer plays{}: \x1b[32m{}\x1b[0m",
             if result.from_book { " (book move)" } else { "" },
-            Engine::move_to_uci_string(from, to, promote, true)
+            Board::move_to_uci_string(from, to, promote, true)
         );
 
         true

@@ -8,7 +8,7 @@
 mod test_utils;
 use test_utils::*;
 
-use chess_engine::types::GameResult;
+use chess_engine::types::GameState;
 
 #[cfg(test)]
 mod fifty_move_rule {
@@ -32,10 +32,10 @@ mod fifty_move_rule {
             position.fifty
         );
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            chess_engine::types::GameResult::DrawByFiftyMoveRule,
+            chess_engine::types::GameState::DrawByFiftyMoveRule,
             "Should be draw by fifty-move rule, got {:?}",
             result
         );
@@ -60,10 +60,10 @@ mod fifty_move_rule {
         position.ply = 0;
         position.first_move[0] = 0;
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            chess_engine::types::GameResult::InProgress,
+            chess_engine::types::GameState::InProgress,
             "Game should be in progress after counter reset"
         );
     }
@@ -85,10 +85,10 @@ mod fifty_move_rule {
         position.ply = 0;
         position.first_move[0] = 0;
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            chess_engine::types::GameResult::InProgress,
+            chess_engine::types::GameState::InProgress,
             "Game should be in progress after capture"
         );
     }
@@ -102,10 +102,10 @@ mod fifty_move_rule {
         position.ply = 0;
         position.first_move[0] = 0;
 
-        let result_before = position.check_game_result();
+        let result_before = position.get_game_state();
         assert_eq!(
             result_before,
-            chess_engine::types::GameResult::InProgress,
+            chess_engine::types::GameState::InProgress,
             "Game should still be in progress at 99 half-moves"
         );
 
@@ -121,10 +121,10 @@ mod fifty_move_rule {
         position.first_move[0] = 0;
 
         // Now check that the game is a draw
-        let result_after = position.check_game_result();
+        let result_after = position.get_game_state();
         assert_eq!(
             result_after,
-            chess_engine::types::GameResult::DrawByFiftyMoveRule,
+            chess_engine::types::GameState::DrawByFiftyMoveRule,
             "Game should be draw by fifty-move rule at 100 halfmoves"
         );
     }
@@ -144,10 +144,10 @@ mod fifty_move_rule {
         position.ply = 0;
         position.first_move[0] = 0;
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            chess_engine::types::GameResult::InProgress,
+            chess_engine::types::GameState::InProgress,
             "Game should still be in progress at 75 halfmoves"
         );
     }
@@ -402,10 +402,10 @@ mod repetition_detection {
             "Should have 2 reps (3 occurrences total)"
         );
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            chess_engine::types::GameResult::DrawByRepetition,
+            chess_engine::types::GameState::DrawByRepetition,
             "Should be draw by repetition"
         );
     }
@@ -421,10 +421,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3K4/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King vs King should be insufficient material"
         );
     }
@@ -435,10 +435,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KB3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Bishop vs King should be insufficient material"
         );
     }
@@ -449,10 +449,10 @@ mod insufficient_material {
         let fen = "8/8/8/4kb2/8/3K4/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King vs King + Bishop should be insufficient material"
         );
     }
@@ -463,10 +463,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KN3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Knight vs King should be insufficient material"
         );
     }
@@ -477,10 +477,10 @@ mod insufficient_material {
         let fen = "8/8/8/4kn2/8/3K4/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King vs King + Knight should be insufficient material"
         );
     }
@@ -491,11 +491,11 @@ mod insufficient_material {
         let fen = "8/8/8/b3k3/8/3KB3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
 
         assert_eq!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King vs King + Bishop (same color) should be insufficient material"
         );
     }
@@ -507,10 +507,10 @@ mod insufficient_material {
         let fen = "b7/8/8/4k3/8/3KB3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Bishop vs King + Bishop (opposite colors) is NOT insufficient material"
         );
     }
@@ -521,10 +521,10 @@ mod insufficient_material {
         let fen = "8/8/8/4kn2/8/3KN3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Knight vs King + Knight is NOT insufficient material"
         );
     }
@@ -535,10 +535,10 @@ mod insufficient_material {
         let fen = "8/8/8/4kn2/8/3KB3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Bishop vs King + Knight is NOT insufficient material"
         );
     }
@@ -549,10 +549,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KR3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Rook vs King is NOT insufficient material"
         );
     }
@@ -563,10 +563,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KQ3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Queen vs King is NOT insufficient material"
         );
     }
@@ -577,10 +577,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KP3/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Pawn vs King is NOT insufficient material"
         );
     }
@@ -591,10 +591,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KBB2/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + 2 Bishops vs King is NOT insufficient material"
         );
     }
@@ -605,10 +605,10 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KBN2/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Bishop + Knight vs King is NOT insufficient material"
         );
     }
@@ -620,13 +620,13 @@ mod insufficient_material {
         let fen = "8/8/8/4k3/8/3KNN2/8/8 w - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         // This is a controversial case - FIDE rules say it's not automatic draw
         // but it's a draw in practice (forced mate impossible).
         // Most engines do NOT flag this as insufficient material
         assert_ne!(
             result,
-            GameResult::DrawByInsufficientMaterial,
+            GameState::DrawByInsufficientMaterial,
             "King + Two Knights vs King is NOT insufficient material"
         );
     }
@@ -644,10 +644,10 @@ mod stalemate_detection {
         let fen = "k7/8/1QK5/8/8/8/8/8 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "Black king with no legal moves (not in check) should be stalemate"
         );
     }
@@ -659,10 +659,10 @@ mod stalemate_detection {
         let fen = "8/8/8/8/8/1Q6/2K5/k7 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "Classic queen endgame stalemate should be detected"
         );
     }
@@ -675,10 +675,10 @@ mod stalemate_detection {
         let fen = "8/8/8/8/8/8/5KR1/7k b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "Complex position with no legal moves should be stalemate"
         );
     }
@@ -689,15 +689,15 @@ mod stalemate_detection {
         let fen = "k7/8/2K5/8/8/8/PP6/8 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "King with legal moves should NOT be stalemate"
         );
         assert_eq!(
             result,
-            GameResult::InProgress,
+            GameState::InProgress,
             "Game should be in progress when king has moves"
         );
     }
@@ -709,14 +709,14 @@ mod stalemate_detection {
         let fen = "7k/6Q1/5K2/8/8/8/8/8 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_ne!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "King in check with no legal moves is checkmate, not stalemate"
         );
         assert!(
-            matches!(result, GameResult::Checkmate(_)),
+            matches!(result, GameState::Checkmate(_)),
             "Should be checkmate, got {:?}",
             result
         );
@@ -730,10 +730,10 @@ mod stalemate_detection {
         let fen = "8/8/8/8/8/3QK3/8/4k3 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "King where all potential moves are into check should be stalemate"
         );
     }
@@ -746,10 +746,10 @@ mod stalemate_detection {
         let fen = "k7/2Q5/K7/8/8/8/8/8 b - - 0 1";
         let mut position = position_from_fen(fen);
 
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "Classic stalemate trap should be detected"
         );
     }
@@ -763,10 +763,10 @@ mod stalemate_detection {
         let mut position = position_from_fen(fen);
 
         // This position should already be stalemate (king on a8, queen on c7, king on c6)
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "This should already be a stalemate position"
         );
     }
@@ -782,10 +782,10 @@ mod stalemate_detection {
         let mut position = position_from_fen(fen);
 
         // Black is already in stalemate
-        let result = position.check_game_result();
+        let result = position.get_game_state();
         assert_eq!(
             result,
-            GameResult::InProgress,
+            GameState::InProgress,
             "White to move, black not yet stalemated"
         );
 
@@ -794,10 +794,10 @@ mod stalemate_detection {
         assert!(move_made, "Queen move should be legal");
 
         // After the move, black is in stalemate
-        let result_after = position.check_game_result();
+        let result_after = position.get_game_state();
         assert_eq!(
             result_after,
-            GameResult::Stalemate,
+            GameState::Stalemate,
             "Should be stalemate after queen move to b6"
         );
     }

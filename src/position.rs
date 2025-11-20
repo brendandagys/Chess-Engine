@@ -9,35 +9,40 @@ use crate::{
         QUEENSIDE_DEFENSE, REVERSE_SQUARE, ROOK_CAPTURE_SCORE, ROOK_SCORE, ROW,
     },
     time::TimeManager,
-    types::{BitBoard, Board, Game, GameResult, Move, Piece, Side, Square},
+    types::{BitBoard, Board, Game, GameState, Move, Piece, Side, Square},
 };
 
 pub struct Position {
     // DYNAMIC
+    pub side: Side,
+    pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
+    pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
+    pub time_manager: TimeManager,
+    pub board: Board,
+    pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
     pub move_list: [Option<Move>; MOVE_STACK],
     pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
-    pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
-    pub fifty: u8,                    // Ply since last capture or pawn move (0-100) [50-move rule]
+    pub best_move_from: Option<Square>, // Found from the search/hash
+    pub best_move_to: Option<Square>, // Found from the search/hash
+
+    pub pv_table: [[Option<Move>; MAX_PLY]; MAX_PLY], // Principal variation: [ply][move_index]
+    pub pv_length: [usize; MAX_PLY],                  // Length of PV at each ply
+
+    pub current_pawn_score: [usize; NUM_SIDES],
+    pub current_non_pawn_score: [usize; NUM_SIDES],
+    pub traditional_material_score: [usize; NUM_SIDES],
+
+    pub castle: u8, // Castle permissions
+    pub fifty: u8,  // Ply since last capture or pawn move (0-100) [50-move rule]
+
     pub nodes: usize, // Total nodes (position in search tree) searched since start of turn
     pub qnodes: usize, // Quiescence nodes searched
     pub max_depth_reached: usize, // Maximum quiescence depth reached in current search
-    pub hash_hits: usize, // Number of transposition table hits
-    pub hash_stores: usize, // Number of positions stored in hash table
+
+    pub hash_hits: usize,    // Number of transposition table hits
+    pub hash_stores: usize,  // Number of positions stored in hash table
     pub beta_cutoffs: usize, // Number of beta cutoffs (fail-highs)
-    pub ply: usize, // How many half-moves deep in current search tree; resets each search ("move" = both players take a turn)
-    pub ply_from_start_of_game: usize, // Total half-moves from start of game (take-backs, fifty-move rule)
-    pub board: Board,
-    pub pawn_engine_score: [usize; NUM_SIDES],
-    pub piece_engine_score: [usize; NUM_SIDES],
-    pub material_score: [usize; NUM_SIDES],
-    pub castle: u8,                                   // Castle permissions
-    pub best_move_from: Option<Square>,               // Found from the search/hash
-    pub best_move_to: Option<Square>,                 // Found from the search/hash
-    pub pv_table: [[Option<Move>; MAX_PLY]; MAX_PLY], // Principal variation: [ply][move_index]
-    pub pv_length: [usize; MAX_PLY],                  // Length of PV at each ply
-    pub time_manager: TimeManager,
     // STATIC
-    pub side: Side,
     square_score: [[[i32; NUM_SQUARES]; NUM_PIECE_TYPES]; NUM_SIDES],
     king_endgame_score: [[i32; NUM_SQUARES]; NUM_SIDES],
     passed_pawns_score: [[i32; NUM_SQUARES]; NUM_SIDES], // Score for 7th rank is built into `square_score`
@@ -115,9 +120,9 @@ impl Position {
             ply: 0,
             ply_from_start_of_game: 0,
             board: Board::new(),
-            pawn_engine_score: [0; NUM_SIDES],
-            piece_engine_score: [0; NUM_SIDES],
-            material_score: [0; NUM_SIDES],
+            current_pawn_score: [0; NUM_SIDES],
+            current_non_pawn_score: [0; NUM_SIDES],
+            traditional_material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
             best_move_from: None,
             best_move_to: None,
@@ -270,123 +275,114 @@ impl Position {
         let mut not_a_file = BitBoard(0);
         let mut not_h_file = BitBoard(0);
 
+        let white = Side::White as usize;
+        let black = Side::Black as usize;
+
         for square in Square::iter() {
+            let square_ = square as usize;
             for square_2 in Square::iter() {
+                let square_2_ = square_2 as usize;
                 // Passed pawns
-                if COLUMN[square as usize].abs_diff(COLUMN[square_2 as usize]) < 2 {
-                    if ROW[square as usize] < ROW[square_2 as usize] && ROW[square_2 as usize] < 7 {
-                        mask_passed[Side::White as usize][square as usize].set_bit(square_2);
+                if COLUMN[square_].abs_diff(COLUMN[square_2_]) < 2 {
+                    if ROW[square_] < ROW[square_2_] && ROW[square_2_] < 7 {
+                        mask_passed[white][square_].set_bit(square_2);
                     }
 
-                    if ROW[square as usize] > ROW[square_2 as usize] && ROW[square_2 as usize] > 0 {
-                        mask_passed[Side::Black as usize][square as usize].set_bit(square_2);
+                    if ROW[square_] > ROW[square_2_] && ROW[square_2_] > 0 {
+                        mask_passed[black][square_].set_bit(square_2);
                     }
                 }
 
                 // Isolated pawns
-                if COLUMN[square as usize].abs_diff(COLUMN[square_2 as usize]) == 1 {
-                    mask_isolated[square as usize].set_bit(square_2);
+                if COLUMN[square_].abs_diff(COLUMN[square_2_]) == 1 {
+                    mask_isolated[square_].set_bit(square_2);
                 }
 
                 // Pawn paths
-                if COLUMN[square as usize] == COLUMN[square_2 as usize] {
-                    if ROW[square as usize] < ROW[square_2 as usize] {
-                        mask_path[Side::White as usize][square as usize].set_bit(square_2);
+                if COLUMN[square_] == COLUMN[square_2_] {
+                    if ROW[square_] < ROW[square_2_] {
+                        mask_path[white][square_].set_bit(square_2);
                     }
 
-                    if ROW[square as usize] > ROW[square_2 as usize] {
-                        mask_path[Side::Black as usize][square as usize].set_bit(square_2);
+                    if ROW[square_] > ROW[square_2_] {
+                        mask_path[black][square_].set_bit(square_2);
                     }
                 }
 
                 // Column mask
-                if COLUMN[square as usize] == COLUMN[square_2 as usize] {
-                    mask_column[square as usize].set_bit(square_2);
+                if COLUMN[square_] == COLUMN[square_2_] {
+                    mask_column[square_].set_bit(square_2);
                 }
             }
 
             // Pawn left
-            if COLUMN[square as usize] > 0 {
-                if ROW[square as usize] < 7 {
-                    pawn_left_index[Side::White as usize][square as usize] = square as i32 + 7;
+            if COLUMN[square_] > 0 {
+                if ROW[square_] < 7 {
+                    pawn_left_index[white][square_] = square as i32 + 7;
 
-                    let pawn_left_index_casted = pawn_left_index[Side::White as usize]
-                        [square as usize]
+                    let pawn_left_index_casted = pawn_left_index[white][square_]
                         .try_into()
                         .expect("Failed to cast pawn left index from i32 to Square");
 
-                    bit_pawn_all_captures[Side::White as usize][square as usize]
-                        .set_bit(pawn_left_index_casted);
-                    bit_pawn_left_captures[Side::White as usize][square as usize]
-                        .set_bit(pawn_left_index_casted);
+                    bit_pawn_all_captures[white][square_].set_bit(pawn_left_index_casted);
+                    bit_pawn_left_captures[white][square_].set_bit(pawn_left_index_casted);
                 }
 
-                if ROW[square as usize] > 0 {
-                    pawn_left_index[Side::Black as usize][square as usize] = square as i32 - 9;
+                if ROW[square_] > 0 {
+                    pawn_left_index[black][square_] = square as i32 - 9;
 
-                    let pawn_left_index_casted = pawn_left_index[Side::Black as usize]
-                        [square as usize]
+                    let pawn_left_index_casted = pawn_left_index[black][square_]
                         .try_into()
                         .expect("Failed to cast pawn left index from i32 to Square");
 
-                    bit_pawn_all_captures[Side::Black as usize][square as usize]
-                        .set_bit(pawn_left_index_casted);
-                    bit_pawn_left_captures[Side::Black as usize][square as usize]
-                        .set_bit(pawn_left_index_casted);
+                    bit_pawn_all_captures[black][square_].set_bit(pawn_left_index_casted);
+                    bit_pawn_left_captures[black][square_].set_bit(pawn_left_index_casted);
                 }
             }
 
             // Pawn right
-            if COLUMN[square as usize] < 7 {
-                if ROW[square as usize] < 7 {
-                    pawn_right_index[Side::White as usize][square as usize] = square as i32 + 9;
+            if COLUMN[square_] < 7 {
+                if ROW[square_] < 7 {
+                    pawn_right_index[white][square_] = square as i32 + 9;
 
-                    let pawn_right_index_casted = pawn_right_index[Side::White as usize]
-                        [square as usize]
+                    let pawn_right_index_casted = pawn_right_index[white][square_]
                         .try_into()
                         .expect("Failed to cast pawn right index from i32 to Square");
 
-                    bit_pawn_all_captures[Side::White as usize][square as usize]
-                        .set_bit(pawn_right_index_casted);
-                    bit_pawn_right_captures[Side::White as usize][square as usize]
-                        .set_bit(pawn_right_index_casted);
+                    bit_pawn_all_captures[white][square_].set_bit(pawn_right_index_casted);
+                    bit_pawn_right_captures[white][square_].set_bit(pawn_right_index_casted);
                 }
 
-                if ROW[square as usize] > 0 {
-                    pawn_right_index[Side::Black as usize][square as usize] = square as i32 - 7;
+                if ROW[square_] > 0 {
+                    pawn_right_index[black][square_] = square as i32 - 7;
 
-                    let pawn_right_index_casted = pawn_right_index[Side::Black as usize]
-                        [square as usize]
+                    let pawn_right_index_casted = pawn_right_index[black][square_]
                         .try_into()
                         .expect("Failed to cast pawn right index from i32 to Square");
 
-                    bit_pawn_all_captures[Side::Black as usize][square as usize]
-                        .set_bit(pawn_right_index_casted);
-                    bit_pawn_right_captures[Side::Black as usize][square as usize]
-                        .set_bit(pawn_right_index_casted);
+                    bit_pawn_all_captures[black][square_].set_bit(pawn_right_index_casted);
+                    bit_pawn_right_captures[black][square_].set_bit(pawn_right_index_casted);
                 }
             }
 
             // Pawn defends - pawns that defend this square
-            bit_pawn_defends[Side::White as usize][square as usize] =
-                bit_pawn_all_captures[Side::Black as usize][square as usize];
+            bit_pawn_defends[white][square_] = bit_pawn_all_captures[black][square_];
 
-            bit_pawn_defends[Side::Black as usize][square as usize] =
-                bit_pawn_all_captures[Side::White as usize][square as usize];
+            bit_pawn_defends[black][square_] = bit_pawn_all_captures[white][square_];
 
             // Pawn movements
-            if ROW[square as usize] < 7 {
-                pawn_plus_index[Side::White as usize][square as usize] = square as i32 + 8;
+            if ROW[square_] < 7 {
+                pawn_plus_index[white][square_] = square as i32 + 8;
             }
-            if ROW[square as usize] < 6 {
-                pawn_double_index[Side::White as usize][square as usize] = square as i32 + 16;
+            if ROW[square_] < 6 {
+                pawn_double_index[white][square_] = square as i32 + 16;
             }
 
-            if ROW[square as usize] > 0 {
-                pawn_plus_index[Side::Black as usize][square as usize] = square as i32 - 8;
+            if ROW[square_] > 0 {
+                pawn_plus_index[black][square_] = square as i32 - 8;
             }
-            if ROW[square as usize] > 1 {
-                pawn_double_index[Side::Black as usize][square as usize] = square as i32 - 16;
+            if ROW[square_] > 1 {
+                pawn_double_index[black][square_] = square as i32 - 16;
             }
 
             not_a_file = BitBoard(!mask_column[0].0);
@@ -675,9 +671,9 @@ impl Position {
     /// The board pieces are already correctly set up from FEN loading or `Position::new()`,
     /// so we don't need to re-add them here (doing so would corrupt the hash by double-toggling).
     pub fn set_material_scores(&mut self) {
-        self.piece_engine_score = [0; NUM_SIDES];
-        self.pawn_engine_score = [0; NUM_SIDES];
-        self.material_score = [0; NUM_SIDES];
+        self.current_non_pawn_score = [0; NUM_SIDES];
+        self.current_pawn_score = [0; NUM_SIDES];
+        self.traditional_material_score = [0; NUM_SIDES];
 
         // Recalculate material scores from current board state
         for square in Square::iter() {
@@ -691,12 +687,12 @@ impl Position {
                 };
 
                 if piece == Piece::Pawn {
-                    self.pawn_engine_score[side_idx] += piece.value() as usize;
+                    self.current_pawn_score[side_idx] += piece.value() as usize;
                 } else {
-                    self.piece_engine_score[side_idx] += piece.value() as usize;
+                    self.current_non_pawn_score[side_idx] += piece.value() as usize;
                 }
 
-                self.material_score[side_idx] += piece.traditional_value() as usize;
+                self.traditional_material_score[side_idx] += piece.traditional_value() as usize;
             }
         }
     }
@@ -781,17 +777,20 @@ impl Position {
             println!("   h  g  f  e  d  c  b  a");
         }
 
+        let white = Side::White as usize;
+        let black = Side::Black as usize;
+
         // Display material scores
-        let white_engine_score = self.pawn_engine_score[Side::White as usize]
-            + self.piece_engine_score[Side::White as usize];
-        let black_engine_score = self.pawn_engine_score[Side::Black as usize]
-            + self.piece_engine_score[Side::Black as usize];
+        let white_engine_score =
+            self.current_pawn_score[white] + self.current_non_pawn_score[white];
+        let black_engine_score =
+            self.current_pawn_score[black] + self.current_non_pawn_score[black];
 
-        let diff = self.material_score[Side::White as usize]
-            .abs_diff(self.material_score[Side::Black as usize]);
+        let diff =
+            self.traditional_material_score[white].abs_diff(self.traditional_material_score[black]);
 
-        let (white_advantage, black_advantage) = match self.material_score[Side::White as usize]
-            .cmp(&self.material_score[Side::Black as usize])
+        let (white_advantage, black_advantage) = match self.traditional_material_score[white]
+            .cmp(&self.traditional_material_score[black])
         {
             std::cmp::Ordering::Greater => (diff, 0),
             std::cmp::Ordering::Less => (0, diff),
@@ -831,29 +830,31 @@ impl Position {
         let mut bit_knight_moves = [BitBoard(0); NUM_SQUARES];
 
         for square in Square::iter() {
+            let square_ = square as usize;
+
             if ROW[square as usize] < 6 && COLUMN[square as usize] < 7 {
-                bit_knight_moves[square as usize].set_bit((square as i32 + 17).try_into().unwrap());
+                bit_knight_moves[square_].set_bit((square as i32 + 17).try_into().unwrap());
             }
-            if ROW[square as usize] < 7 && COLUMN[square as usize] < 6 {
-                bit_knight_moves[square as usize].set_bit((square as i32 + 10).try_into().unwrap());
+            if ROW[square_] < 7 && COLUMN[square_] < 6 {
+                bit_knight_moves[square_].set_bit((square as i32 + 10).try_into().unwrap());
             }
-            if ROW[square as usize] < 6 && COLUMN[square as usize] > 0 {
-                bit_knight_moves[square as usize].set_bit((square as i32 + 15).try_into().unwrap());
+            if ROW[square_] < 6 && COLUMN[square_] > 0 {
+                bit_knight_moves[square_].set_bit((square as i32 + 15).try_into().unwrap());
             }
-            if ROW[square as usize] < 7 && COLUMN[square as usize] > 1 {
-                bit_knight_moves[square as usize].set_bit((square as i32 + 6).try_into().unwrap());
+            if ROW[square_] < 7 && COLUMN[square_] > 1 {
+                bit_knight_moves[square_].set_bit((square as i32 + 6).try_into().unwrap());
             }
-            if ROW[square as usize] > 1 && COLUMN[square as usize] < 7 {
-                bit_knight_moves[square as usize].set_bit((square as i32 - 15).try_into().unwrap());
+            if ROW[square_] > 1 && COLUMN[square_] < 7 {
+                bit_knight_moves[square_].set_bit((square as i32 - 15).try_into().unwrap());
             }
-            if ROW[square as usize] > 0 && COLUMN[square as usize] < 6 {
-                bit_knight_moves[square as usize].set_bit((square as i32 - 6).try_into().unwrap());
+            if ROW[square_] > 0 && COLUMN[square_] < 6 {
+                bit_knight_moves[square_].set_bit((square as i32 - 6).try_into().unwrap());
             }
-            if ROW[square as usize] > 1 && COLUMN[square as usize] > 0 {
-                bit_knight_moves[square as usize].set_bit((square as i32 - 17).try_into().unwrap());
+            if ROW[square_] > 1 && COLUMN[square_] > 0 {
+                bit_knight_moves[square_].set_bit((square as i32 - 17).try_into().unwrap());
             }
-            if ROW[square as usize] > 0 && COLUMN[square as usize] > 1 {
-                bit_knight_moves[square as usize].set_bit((square as i32 - 10).try_into().unwrap());
+            if ROW[square_] > 0 && COLUMN[square_] > 1 {
+                bit_knight_moves[square_].set_bit((square as i32 - 10).try_into().unwrap());
             }
         }
 
@@ -864,29 +865,31 @@ impl Position {
         let mut bit_king_moves = [BitBoard(0); NUM_SQUARES];
 
         for square in Square::iter() {
-            if COLUMN[square as usize] > 0 {
-                bit_king_moves[square as usize].set_bit((square as i32 - 1).try_into().unwrap());
+            let square_ = square as usize;
+
+            if COLUMN[square_] > 0 {
+                bit_king_moves[square_].set_bit((square as i32 - 1).try_into().unwrap());
             }
-            if COLUMN[square as usize] < 7 {
-                bit_king_moves[square as usize].set_bit((square as i32 + 1).try_into().unwrap());
+            if COLUMN[square_] < 7 {
+                bit_king_moves[square_].set_bit((square as i32 + 1).try_into().unwrap());
             }
-            if ROW[square as usize] > 0 {
-                bit_king_moves[square as usize].set_bit((square as i32 - 8).try_into().unwrap());
+            if ROW[square_] > 0 {
+                bit_king_moves[square_].set_bit((square as i32 - 8).try_into().unwrap());
             }
-            if ROW[square as usize] < 7 {
-                bit_king_moves[square as usize].set_bit((square as i32 + 8).try_into().unwrap());
+            if ROW[square_] < 7 {
+                bit_king_moves[square_].set_bit((square as i32 + 8).try_into().unwrap());
             }
-            if COLUMN[square as usize] < 7 && ROW[square as usize] < 7 {
-                bit_king_moves[square as usize].set_bit((square as i32 + 9).try_into().unwrap());
+            if COLUMN[square_] < 7 && ROW[square_] < 7 {
+                bit_king_moves[square_].set_bit((square as i32 + 9).try_into().unwrap());
             }
-            if COLUMN[square as usize] > 0 && ROW[square as usize] < 7 {
-                bit_king_moves[square as usize].set_bit((square as i32 + 7).try_into().unwrap());
+            if COLUMN[square_] > 0 && ROW[square_] < 7 {
+                bit_king_moves[square_].set_bit((square as i32 + 7).try_into().unwrap());
             }
-            if COLUMN[square as usize] > 0 && ROW[square as usize] > 0 {
-                bit_king_moves[square as usize].set_bit((square as i32 - 9).try_into().unwrap());
+            if COLUMN[square_] > 0 && ROW[square_] > 0 {
+                bit_king_moves[square_].set_bit((square as i32 - 9).try_into().unwrap());
             }
-            if COLUMN[square as usize] < 7 && ROW[square as usize] > 0 {
-                bit_king_moves[square as usize].set_bit((square as i32 - 7).try_into().unwrap());
+            if COLUMN[square_] < 7 && ROW[square_] > 0 {
+                bit_king_moves[square_].set_bit((square as i32 - 7).try_into().unwrap());
             }
         }
 
@@ -903,22 +906,22 @@ impl Position {
         let mut bit_bishop_moves = [BitBoard(0); NUM_SQUARES];
 
         for square in Square::iter() {
+            let square_ = square as usize;
+
             for square_2 in Square::iter() {
+                let square_2_ = square_2 as usize;
+
                 if square != square_2 {
-                    if NORTH_WEST_DIAGONAL[square as usize]
-                        == NORTH_WEST_DIAGONAL[square_2 as usize]
-                        || NORTH_EAST_DIAGONAL[square as usize]
-                            == NORTH_EAST_DIAGONAL[square_2 as usize]
+                    if NORTH_WEST_DIAGONAL[square_] == NORTH_WEST_DIAGONAL[square_2_]
+                        || NORTH_EAST_DIAGONAL[square_] == NORTH_EAST_DIAGONAL[square_2_]
                     {
-                        bit_queen_moves[square as usize].set_bit(square_2);
-                        bit_bishop_moves[square as usize].set_bit(square_2);
+                        bit_queen_moves[square_].set_bit(square_2);
+                        bit_bishop_moves[square_].set_bit(square_2);
                     }
 
-                    if ROW[square as usize] == ROW[square_2 as usize]
-                        || COLUMN[square as usize] == COLUMN[square_2 as usize]
-                    {
-                        bit_queen_moves[square as usize].set_bit(square_2);
-                        bit_rook_moves[square as usize].set_bit(square_2);
+                    if ROW[square_] == ROW[square_2_] || COLUMN[square_] == COLUMN[square_2_] {
+                        bit_queen_moves[square_].set_bit(square_2);
+                        bit_rook_moves[square_].set_bit(square_2);
                     }
                 }
             }
@@ -1087,39 +1090,34 @@ impl Position {
     }
 
     fn generate_castle_moves(&mut self, side: Side, move_count: &mut isize) {
+        let h1 = Square::H1 as usize;
+        let e1 = Square::E1 as usize;
+        let a1 = Square::A1 as usize;
+        let h8 = Square::H8 as usize;
+        let e8 = Square::E8 as usize;
+        let a8 = Square::A8 as usize;
+
         match side {
             Side::White => {
                 // Kingside
-                if self.castle & 1 != 0
-                    && (self.bit_between[Square::H1 as usize][Square::E1 as usize].0
-                        & self.board.bit_all.0)
-                        == 0
+                if self.castle & 1 != 0 && (self.bit_between[h1][e1].0 & self.board.bit_all.0) == 0
                 {
                     self.add_move(Square::E1, Square::G1, 0, move_count);
                 }
                 // Queenside
-                if self.castle & 2 != 0
-                    && (self.bit_between[Square::A1 as usize][Square::E1 as usize].0
-                        & self.board.bit_all.0)
-                        == 0
+                if self.castle & 2 != 0 && (self.bit_between[a1][e1].0 & self.board.bit_all.0) == 0
                 {
                     self.add_move(Square::E1, Square::C1, 0, move_count);
                 }
             }
             Side::Black => {
                 // Kingside
-                if self.castle & 4 != 0
-                    && (self.bit_between[Square::E8 as usize][Square::H8 as usize].0
-                        & self.board.bit_all.0)
-                        == 0
+                if self.castle & 4 != 0 && (self.bit_between[e8][h8].0 & self.board.bit_all.0) == 0
                 {
                     self.add_move(Square::E8, Square::G8, 0, move_count);
                 }
                 // Queenside
-                if self.castle & 8 != 0
-                    && (self.bit_between[Square::E8 as usize][Square::A8 as usize].0
-                        & self.board.bit_all.0)
-                        == 0
+                if self.castle & 8 != 0 && (self.bit_between[e8][a8].0 & self.board.bit_all.0) == 0
                 {
                     self.add_move(Square::E8, Square::C8, 0, move_count);
                 }
@@ -1163,52 +1161,48 @@ impl Position {
         self.generate_en_passant_moves(side, &mut move_count);
         self.generate_castle_moves(side, &mut move_count);
 
+        let side_ = side as usize;
+        let opponent = side.opponent() as usize;
+        let pawn = Piece::Pawn as usize;
+
         // Pawns
         match side {
             Side::White => {
                 left_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
-                            >> 7),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_h_file.0) >> 7),
                 );
                 right_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
-                            >> 9),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_a_file.0) >> 9),
                 );
-                unblocked_pawns = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & !(self.board.bit_all.0 >> 8),
-                );
+                unblocked_pawns =
+                    BitBoard(self.board.bit_pieces[side_][pawn].0 & !(self.board.bit_all.0 >> 8));
             }
             Side::Black => {
                 left_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
-                            << 9),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_h_file.0) << 9),
                 );
                 right_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
-                            << 7),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_a_file.0) << 7),
                 );
-                unblocked_pawns = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & !(self.board.bit_all.0 << 8),
-                );
+                unblocked_pawns =
+                    BitBoard(self.board.bit_pieces[side_][pawn].0 & !(self.board.bit_all.0 << 8));
             }
         }
 
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
-            let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let victim = self.bit_pawn_left_captures[side_][square_from as usize];
             let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
 
             // Check if this is a promotion
-            if self.ranks[side as usize][square_from as usize] == 6 {
+            if self.ranks[side_][square_from as usize] == 6 {
                 self.add_pawn_promotion_captures(
                     square_from
                         .try_into()
@@ -1231,14 +1225,14 @@ impl Position {
 
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
-            let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let victim = self.bit_pawn_right_captures[side_][square_from as usize];
             let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
 
             // Check if this is a promotion
-            if self.ranks[side as usize][square_from as usize] == 6 {
+            if self.ranks[side_][square_from as usize] == 6 {
                 self.add_pawn_promotion_captures(
                     square_from
                         .try_into()
@@ -1261,7 +1255,7 @@ impl Position {
 
         while unblocked_pawns.0 != 0 {
             let square_from = unblocked_pawns.next_bit_mut();
-            let to = self.pawn_plus_index[side as usize][square_from as usize];
+            let to = self.pawn_plus_index[side_][square_from as usize];
 
             // Only add the move if the destination square is valid
             if to >= 0 && to <= 63 {
@@ -1270,7 +1264,7 @@ impl Position {
                     .expect("Failed to convert pawn plus index to Square");
 
                 // Check if this is a promotion
-                if self.ranks[side as usize][square_from as usize] == 6 {
+                if self.ranks[side_][square_from as usize] == 6 {
                     let square_from = square_from
                         .try_into()
                         .expect("Failed to convert square_from to Square");
@@ -1294,12 +1288,12 @@ impl Position {
                     );
 
                     // Check double jump validity
-                    if self.ranks[side as usize][square_from as usize] == 1
+                    if self.ranks[side_][square_from as usize] == 1
                         && self.board.value
-                            [self.pawn_double_index[side as usize][square_from as usize] as usize]
+                            [self.pawn_double_index[side_][square_from as usize] as usize]
                             == Piece::Empty
                     {
-                        let square_double_jump_to: Square = self.pawn_double_index[side as usize]
+                        let square_double_jump_to: Square = self.pawn_double_index[side_]
                             [square_from as usize]
                             .try_into()
                             .expect("Failed to convert pawn double index to Square");
@@ -1316,14 +1310,13 @@ impl Position {
         }
 
         // Knights
-        let mut knights = BitBoard(self.board.bit_pieces[side as usize][Piece::Knight as usize].0);
+        let mut knights = BitBoard(self.board.bit_pieces[side_][Piece::Knight as usize].0);
 
         while knights.0 != 0 {
             let square_from = knights.next_bit_mut();
 
             let mut knight_captures = BitBoard(
-                self.bit_knight_moves[square_from as usize].0
-                    & self.board.bit_units[side.opponent() as usize].0,
+                self.bit_knight_moves[square_from as usize].0 & self.board.bit_units[opponent].0,
             );
 
             while knight_captures.0 != 0 {
@@ -1369,7 +1362,7 @@ impl Position {
             (Piece::Rook, self.bit_rook_moves, ROOK_CAPTURE_SCORE),
             (Piece::Queen, self.bit_queen_moves, QUEEN_CAPTURE_SCORE),
         ] {
-            let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
+            let mut pieces = BitBoard(self.board.bit_pieces[side_][piece as usize].0);
 
             while pieces.0 != 0 {
                 let square_from = pieces.next_bit_mut();
@@ -1377,7 +1370,7 @@ impl Position {
 
                 // Remove squares blocked by friendly units and squares after them
                 let mut moves_to_self_occupied_squares =
-                    BitBoard(possible_moves.0 & self.board.bit_units[side as usize].0);
+                    BitBoard(possible_moves.0 & self.board.bit_units[side_].0);
 
                 while moves_to_self_occupied_squares.0 != 0 {
                     let square_to = moves_to_self_occupied_squares.next_bit_mut();
@@ -1389,7 +1382,7 @@ impl Position {
                 }
 
                 let mut possible_captures =
-                    BitBoard(possible_moves.0 & self.board.bit_units[side.opponent() as usize].0);
+                    BitBoard(possible_moves.0 & self.board.bit_units[opponent].0);
 
                 while possible_captures.0 != 0 {
                     let square_to = possible_captures.next_bit_mut();
@@ -1442,7 +1435,7 @@ impl Position {
         }
 
         // King
-        let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
+        let king_square = self.board.bit_pieces[side_][Piece::King as usize].next_bit();
 
         self.generate_king_captures(side, king_square, &mut move_count);
 
@@ -1480,51 +1473,47 @@ impl Position {
         let mut right_pawn_captures;
         let mut unblocked_pawns;
 
+        let side_ = side as usize;
+        let opponent = side.opponent() as usize;
+        let pawn = Piece::Pawn as usize;
+
         match side {
             Side::White => {
                 left_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
-                            >> 7),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_h_file.0) >> 7),
                 );
                 right_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
-                            >> 9),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_a_file.0) >> 9),
                 );
-                unblocked_pawns = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & !(self.board.bit_all.0 >> 8),
-                );
+                unblocked_pawns =
+                    BitBoard(self.board.bit_pieces[side_][pawn].0 & !(self.board.bit_all.0 >> 8));
             }
             Side::Black => {
                 left_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_h_file.0)
-                            << 9),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_h_file.0) << 9),
                 );
                 right_pawn_captures = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & ((self.board.bit_units[side.opponent() as usize].0 & self.not_a_file.0)
-                            << 7),
+                    self.board.bit_pieces[side_][pawn].0
+                        & ((self.board.bit_units[opponent].0 & self.not_a_file.0) << 7),
                 );
-                unblocked_pawns = BitBoard(
-                    self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                        & !(self.board.bit_all.0 << 8),
-                );
+                unblocked_pawns =
+                    BitBoard(self.board.bit_pieces[side_][pawn].0 & !(self.board.bit_all.0 << 8));
             }
         }
 
         while left_pawn_captures.0 != 0 {
             let square_from = left_pawn_captures.next_bit_mut();
-            let victim = self.bit_pawn_left_captures[side as usize][square_from as usize];
+            let victim = self.bit_pawn_left_captures[side_][square_from as usize];
             let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
 
             // Check if this is a promotion
-            if self.ranks[side as usize][square_from as usize] == 6 {
+            if self.ranks[side_][square_from as usize] == 6 {
                 self.add_pawn_promotion_captures(
                     square_from
                         .try_into()
@@ -1547,14 +1536,14 @@ impl Position {
 
         while right_pawn_captures.0 != 0 {
             let square_from = right_pawn_captures.next_bit_mut();
-            let victim = self.bit_pawn_right_captures[side as usize][square_from as usize];
+            let victim = self.bit_pawn_right_captures[side_][square_from as usize];
             let square_to = victim.into();
 
             let base_score =
                 PAWN_CAPTURE_SCORE[self.board.value[victim.next_bit() as usize] as usize] as isize;
 
             // Check if this is a promotion
-            if self.ranks[side as usize][square_from as usize] == 6 {
+            if self.ranks[side_][square_from as usize] == 6 {
                 self.add_pawn_promotion_captures(
                     square_from
                         .try_into()
@@ -1580,8 +1569,8 @@ impl Position {
             let square_from = unblocked_pawns.next_bit_mut();
 
             // Only consider pawns on the 7th rank (rank 6 in 0-indexed)
-            if self.ranks[side as usize][square_from as usize] == 6 {
-                let to = self.pawn_plus_index[side as usize][square_from as usize];
+            if self.ranks[side_][square_from as usize] == 6 {
+                let to = self.pawn_plus_index[side_][square_from as usize];
 
                 // Only add the move if the destination square is valid
                 if to >= 0 && to <= 63 {
@@ -1604,14 +1593,13 @@ impl Position {
         }
 
         // Knights
-        let mut knights = BitBoard(self.board.bit_pieces[side as usize][Piece::Knight as usize].0);
+        let mut knights = BitBoard(self.board.bit_pieces[side_][Piece::Knight as usize].0);
 
         while knights.0 != 0 {
             let square_from = knights.next_bit_mut();
 
             let mut knight_captures = BitBoard(
-                self.bit_knight_moves[square_from as usize].0
-                    & self.board.bit_units[side.opponent() as usize].0,
+                self.bit_knight_moves[square_from as usize].0 & self.board.bit_units[opponent].0,
             );
 
             while knight_captures.0 != 0 {
@@ -1636,14 +1624,13 @@ impl Position {
             (Piece::Rook, self.bit_rook_moves, ROOK_CAPTURE_SCORE),
             (Piece::Queen, self.bit_queen_moves, QUEEN_CAPTURE_SCORE),
         ] {
-            let mut pieces = BitBoard(self.board.bit_pieces[side as usize][piece as usize].0);
+            let mut pieces = BitBoard(self.board.bit_pieces[side_][piece as usize].0);
 
             while pieces.0 != 0 {
                 let attacking_square = pieces.next_bit_mut();
 
                 let mut possible_captures = BitBoard(
-                    bit_moves[attacking_square as usize].0
-                        & self.board.bit_units[side.opponent() as usize].0,
+                    bit_moves[attacking_square as usize].0 & self.board.bit_units[opponent].0,
                 );
 
                 while possible_captures.0 != 0 {
@@ -1676,7 +1663,7 @@ impl Position {
         }
 
         // King
-        let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
+        let king_square = self.board.bit_pieces[side_][Piece::King as usize].next_bit();
         self.generate_king_captures(side, king_square, &mut move_count);
         self.first_move[self.ply + 1] = move_count;
     }
@@ -1735,39 +1722,29 @@ impl Position {
     ///
     /// Note: K+B vs K+N and K+N vs K+N are NOT insufficient material
     fn has_insufficient_material(&self) -> bool {
+        let white = Side::White as usize;
+        let black = Side::Black as usize;
+
         // If there are any pawns, there's sufficient material (pawn can promote)
-        if self.pawn_engine_score[Side::White as usize] != 0
-            || self.pawn_engine_score[Side::Black as usize] != 0
-        {
+        if self.current_pawn_score[white] != 0 || self.current_pawn_score[black] != 0 {
             return false;
         }
 
-        // Count pieces for each side (excluding kings)
-        let white_queens = self.board.bit_pieces[Side::White as usize][Piece::Queen as usize]
-            .0
-            .count_ones();
-        let white_rooks = self.board.bit_pieces[Side::White as usize][Piece::Rook as usize]
-            .0
-            .count_ones();
-        let white_bishops = self.board.bit_pieces[Side::White as usize][Piece::Bishop as usize]
-            .0
-            .count_ones();
-        let white_knights = self.board.bit_pieces[Side::White as usize][Piece::Knight as usize]
-            .0
-            .count_ones();
+        let queen = Piece::Queen as usize;
+        let rook = Piece::Rook as usize;
+        let bishop = Piece::Bishop as usize;
+        let knight = Piece::Knight as usize;
 
-        let black_queens = self.board.bit_pieces[Side::Black as usize][Piece::Queen as usize]
-            .0
-            .count_ones();
-        let black_rooks = self.board.bit_pieces[Side::Black as usize][Piece::Rook as usize]
-            .0
-            .count_ones();
-        let black_bishops = self.board.bit_pieces[Side::Black as usize][Piece::Bishop as usize]
-            .0
-            .count_ones();
-        let black_knights = self.board.bit_pieces[Side::Black as usize][Piece::Knight as usize]
-            .0
-            .count_ones();
+        // Count pieces for each side (excluding kings)
+        let white_queens = self.board.bit_pieces[white][queen].0.count_ones();
+        let white_rooks = self.board.bit_pieces[white][rook].0.count_ones();
+        let white_bishops = self.board.bit_pieces[white][bishop].0.count_ones();
+        let white_knights = self.board.bit_pieces[white][knight].0.count_ones();
+
+        let black_queens = self.board.bit_pieces[black][queen].0.count_ones();
+        let black_rooks = self.board.bit_pieces[black][rook].0.count_ones();
+        let black_bishops = self.board.bit_pieces[black][bishop].0.count_ones();
+        let black_knights = self.board.bit_pieces[black][knight].0.count_ones();
 
         // If either side has a queen or rook, there's sufficient material
         if white_queens > 0 || white_rooks > 0 || black_queens > 0 || black_rooks > 0 {
@@ -1802,10 +1779,8 @@ impl Position {
         // K+B vs K+B (same color bishops)
         // Need to check if bishops are on same colored squares
         if white_bishops == 1 && white_knights == 0 && black_bishops == 1 && black_knights == 0 {
-            let white_bishop_square =
-                self.board.bit_pieces[Side::White as usize][Piece::Bishop as usize].next_bit();
-            let black_bishop_square =
-                self.board.bit_pieces[Side::Black as usize][Piece::Bishop as usize].next_bit();
+            let white_bishop_square = self.board.bit_pieces[white][bishop].next_bit();
+            let black_bishop_square = self.board.bit_pieces[black][bishop].next_bit();
 
             // Bishops are on same color if (rank + file) has same parity
             let white_color = (white_bishop_square / 8 + white_bishop_square % 8) % 2;
@@ -1820,17 +1795,17 @@ impl Position {
     }
 
     /// Checks the current game state and returns the result
-    pub fn check_game_result(&mut self) -> GameResult {
+    pub fn get_game_state(&mut self) -> GameState {
         if self.repetitions() >= 2 {
-            return GameResult::DrawByRepetition;
+            return GameState::DrawByRepetition;
         }
 
         if self.fifty >= 100 {
-            return GameResult::DrawByFiftyMoveRule;
+            return GameState::DrawByFiftyMoveRule;
         }
 
         if self.has_insufficient_material() {
-            return GameResult::DrawByInsufficientMaterial;
+            return GameState::DrawByInsufficientMaterial;
         }
 
         self.generate_moves_and_captures(self.side, |_, _, _| 0);
@@ -1856,13 +1831,13 @@ impl Position {
                 self.side.opponent(),
                 Square::try_from(king_square).unwrap(),
             ) {
-                return GameResult::Checkmate(self.side.opponent());
+                return GameState::Checkmate(self.side.opponent());
             } else {
-                return GameResult::Stalemate;
+                return GameState::Stalemate;
             }
         }
 
-        GameResult::InProgress
+        GameState::InProgress
     }
 
     /// Get the en passant file (0-7 for files A-H) from the last move, if available.
@@ -1941,11 +1916,14 @@ impl Position {
             return false;
         }
 
+        let from_ = from as usize;
+        let to_ = to as usize;
+
         let mut game = self.game_list[self.ply_from_start_of_game].unwrap_or(Game::new());
 
         game.from = from;
         game.to = to;
-        game.capture = self.board.value[to as usize];
+        game.capture = self.board.value[to_];
         game.fifty = self.fifty;
         game.castle = self.castle;
         game.hash = self.board.hash.current_key;
@@ -1958,7 +1936,7 @@ impl Position {
 
         // Update the castle permissions
         let old_castle = self.castle;
-        self.castle &= CASTLE_MASK[from as usize] & CASTLE_MASK[to as usize];
+        self.castle &= CASTLE_MASK[from_] & CASTLE_MASK[to_];
 
         self.board
             .hash
@@ -1968,13 +1946,13 @@ impl Position {
         self.ply_from_start_of_game += 1;
         self.fifty += 1;
 
-        if self.board.value[from as usize] == Piece::Pawn {
+        if self.board.value[from_] == Piece::Pawn {
             self.fifty = 0;
 
             // Handle en passant (diagonal pawn move to empty square, but NOT on promotion rank)
-            if self.board.value[to as usize] == Piece::Empty
-                && COLUMN[from as usize] != COLUMN[to as usize]
-                && ![0, 7].contains(&ROW[to as usize])
+            if self.board.value[to_] == Piece::Empty
+                && COLUMN[from_] != COLUMN[to_]
+                && ![0, 7].contains(&ROW[to_])
             // Not on promotion rank
             {
                 let en_passant_target = to as i32 + REVERSE_SQUARE[self.side as usize];
@@ -1989,14 +1967,14 @@ impl Position {
         }
 
         // Handle regular (non-en passant) captures
-        if self.board.value[to as usize] != Piece::Empty {
+        if self.board.value[to_] != Piece::Empty {
             self.fifty = 0;
 
             self.board
-                .remove_piece(self.side.opponent(), self.board.value[to as usize], to);
+                .remove_piece(self.side.opponent(), self.board.value[to_], to);
         }
 
-        if self.board.value[from as usize] == Piece::Pawn && [0, 7].contains(&ROW[to as usize]) {
+        if self.board.value[from_] == Piece::Pawn && [0, 7].contains(&ROW[to_]) {
             // Handle promotions
             let promotion_piece = promote.unwrap_or(Piece::Queen);
             self.board.remove_piece(self.side, Piece::Pawn, from);
@@ -2005,24 +1983,22 @@ impl Position {
             game.promote = Some(promotion_piece);
         } else {
             self.board
-                .update_piece(self.side, self.board.value[from as usize], from, to);
+                .update_piece(self.side, self.board.value[from_], from, to);
 
             game.promote = None;
         }
 
         self.set_material_scores();
 
-        let (new_en_passant_file, new_adjacent_opponent_pawn) = if self.board.value[to as usize]
-            == Piece::Pawn
-            && (to as i32 - from as i32).abs() == 16
-        {
-            (
-                Some(COLUMN[to as usize]),
-                self.has_adjacent_opponent_pawn(to, self.side.opponent()),
-            )
-        } else {
-            (None, false)
-        };
+        let (new_en_passant_file, new_adjacent_opponent_pawn) =
+            if self.board.value[to_] == Piece::Pawn && (to as i32 - from as i32).abs() == 16 {
+                (
+                    Some(COLUMN[to_]),
+                    self.has_adjacent_opponent_pawn(to, self.side.opponent()),
+                )
+            } else {
+                (None, false)
+            };
 
         self.board.hash.update_en_passant(
             match (old_en_passant_file, old_adjacent_opponent_pawn) {
@@ -2159,25 +2135,24 @@ impl Position {
     ) -> i32 {
         let mut score: i32 = 0;
 
-        if (self.mask_passed[side as usize][square as usize].0
-            & self.board.bit_pieces[side.opponent() as usize][Piece::Pawn as usize].0)
+        let side_ = side as usize;
+        let square = square as usize;
+        let pawn = Piece::Pawn as usize;
+
+        if (self.mask_passed[side_][square].0
+            & self.board.bit_pieces[side.opponent() as usize][pawn].0)
             == 0
-            && self.mask_path[side as usize][square as usize].0
-                & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-                == 0
+            && self.mask_path[side_][square].0 & self.board.bit_pieces[side_][pawn].0 == 0
         {
-            score += self.passed_pawns_score[side as usize][square as usize];
+            score += self.passed_pawns_score[side_][square];
         }
 
-        if self.mask_isolated[square as usize].0
-            & self.board.bit_pieces[side as usize][Piece::Pawn as usize].0
-            == 0
-        {
+        if self.mask_isolated[square].0 & self.board.bit_pieces[side_][pawn].0 == 0 {
             score += ISOLATED_PAWN_SCORE // Is negative
         }
 
-        *kingside_pawns += KINGSIDE_DEFENSE[side as usize][square as usize];
-        *queenside_pawns += QUEENSIDE_DEFENSE[side as usize][square as usize];
+        *kingside_pawns += KINGSIDE_DEFENSE[side_][square];
+        *queenside_pawns += QUEENSIDE_DEFENSE[side_][square];
 
         score
     }
@@ -2210,54 +2185,56 @@ impl Position {
         let mut kingside_pawns = [0, 0];
 
         for side in Side::iter() {
+            let side_ = side as usize;
+
             // Add material score
-            score[side as usize] += self.material_score[side as usize] as i32;
+            score[side_] += self.traditional_material_score[side_] as i32;
 
             // Pawns
-            let mut pawns = self.board.bit_pieces[side as usize][Piece::Pawn as usize];
+            let mut pawns = self.board.bit_pieces[side_][Piece::Pawn as usize];
 
             while pawns.0 != 0 {
                 let pawn_square = pawns.next_bit_mut();
 
-                score[side as usize] += self.square_score[side as usize][Piece::Pawn as usize]
+                score[side_] += self.square_score[side_][Piece::Pawn as usize]
                     [pawn_square as usize]
                     + self.evaluate_pawn(
                         side,
                         pawn_square
                             .try_into()
                             .expect("Failed to convert pawn u8 to Square"),
-                        &mut kingside_pawns[side as usize],
-                        &mut queenside_pawns[side as usize],
+                        &mut kingside_pawns[side_],
+                        &mut queenside_pawns[side_],
                     );
             }
 
             // Knights
-            let mut knights = self.board.bit_pieces[side as usize][Piece::Knight as usize];
+            let mut knights = self.board.bit_pieces[side_][Piece::Knight as usize];
 
             while knights.0 != 0 {
                 let knight_square = knights.next_bit_mut();
 
-                score[side as usize] += self.square_score[side as usize][Piece::Knight as usize]
-                    [knight_square as usize];
+                score[side_] +=
+                    self.square_score[side_][Piece::Knight as usize][knight_square as usize];
             }
 
             // Bishops
-            let mut bishops = self.board.bit_pieces[side as usize][Piece::Bishop as usize];
+            let mut bishops = self.board.bit_pieces[side_][Piece::Bishop as usize];
 
             while bishops.0 != 0 {
                 let bishop_square = bishops.next_bit_mut();
 
-                score[side as usize] += self.square_score[side as usize][Piece::Bishop as usize]
-                    [bishop_square as usize];
+                score[side_] +=
+                    self.square_score[side_][Piece::Bishop as usize][bishop_square as usize];
             }
 
             // Rooks
-            let mut rooks = self.board.bit_pieces[side as usize][Piece::Rook as usize];
+            let mut rooks = self.board.bit_pieces[side_][Piece::Rook as usize];
 
             while rooks.0 != 0 {
                 let rook_square = rooks.next_bit_mut();
 
-                score[side as usize] += self.square_score[side as usize][Piece::Rook as usize]
+                score[side_] += self.square_score[side_][Piece::Rook as usize]
                     [rook_square as usize]
                     + self.evaluate_rook(
                         side,
@@ -2268,35 +2245,31 @@ impl Position {
             }
 
             // Queens (can be multiple after promotions)
-            let mut queens = self.board.bit_pieces[side as usize][Piece::Queen as usize];
+            let mut queens = self.board.bit_pieces[side_][Piece::Queen as usize];
 
             while queens.0 != 0 {
                 let queen_square = queens.next_bit_mut();
 
-                score[side as usize] +=
-                    self.square_score[side as usize][Piece::Queen as usize][queen_square as usize];
+                score[side_] +=
+                    self.square_score[side_][Piece::Queen as usize][queen_square as usize];
             }
 
             // King
-            let king_square = self.board.bit_pieces[side as usize][Piece::King as usize].next_bit();
+            let king_square = self.board.bit_pieces[side_][Piece::King as usize].next_bit();
 
             if self.board.bit_pieces[side.opponent() as usize][Piece::Queen as usize].0 == 0 {
-                score[side as usize] += self.king_endgame_score[side as usize][king_square as usize]
-            } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
-                & self.mask_kingside.0
+                score[side_] += self.king_endgame_score[side_][king_square as usize]
+            } else if self.board.bit_pieces[side_][Piece::King as usize].0 & self.mask_kingside.0
                 != 0
             {
-                score[side as usize] += kingside_pawns[side as usize]
-            } else if self.board.bit_pieces[side as usize][Piece::King as usize].0
-                & self.mask_queenside.0
+                score[side_] += kingside_pawns[side_]
+            } else if self.board.bit_pieces[side_][Piece::King as usize].0 & self.mask_queenside.0
                 != 0
             {
-                score[side as usize] += queenside_pawns[side as usize]
+                score[side_] += queenside_pawns[side_]
             }
         }
 
-        // Return evaluation from side-to-move's perspective
-        // Negamax requires positive scores to mean the side-to-move is winning
         let total = score[Side::White as usize] - score[Side::Black as usize];
 
         match self.side {
@@ -2351,9 +2324,7 @@ impl Position {
         self.nodes += 1;
         self.qnodes += 1;
 
-        if self.ply > self.max_depth_reached {
-            self.max_depth_reached = self.ply;
-        }
+        self.max_depth_reached = self.max_depth_reached.max(self.ply);
 
         if let Some(max) = max_nodes
             && self.nodes >= max
@@ -2375,9 +2346,7 @@ impl Position {
             return best_score;
         }
 
-        if best_score > alpha {
-            alpha = best_score;
-        }
+        alpha = alpha.max(best_score);
 
         self.generate_captures(self.side);
         let move_list_start = self.first_move[self.ply] as usize;
@@ -2404,13 +2373,8 @@ impl Position {
                 return score;
             }
 
-            if score > best_score {
-                best_score = score;
-            }
-
-            if score > alpha {
-                alpha = score;
-            }
+            best_score = best_score.max(score);
+            alpha = alpha.max(score);
         }
 
         best_score
@@ -2430,8 +2394,10 @@ impl Position {
         let mut best_score_index = from_index;
 
         for i in from_index + 1..self.first_move[self.ply + 1] {
-            if self.move_list[i as usize].unwrap().score > best_score {
-                best_score = self.move_list[i as usize].unwrap().score;
+            let move_ = self.move_list[i as usize].expect("Found empty Move");
+
+            if move_.score > best_score {
+                best_score = move_.score;
                 best_score_index = i;
             }
         }
@@ -2532,9 +2498,7 @@ impl Position {
         }
 
         // Track selective depth for main search too
-        if self.ply > self.max_depth_reached {
-            self.max_depth_reached = self.ply;
-        }
+        self.max_depth_reached = self.max_depth_reached.max(self.ply);
 
         // Check for draw by repetition (2-fold during search to avoid loops)
         if self.ply > 0 && self.search_backward_for_identical_position() {
@@ -2558,94 +2522,6 @@ impl Position {
             self.check_if_time_is_exhausted();
         }
 
-        // TODO: Transposition table integration (see CODEBASE_ANALYSIS.md for details)
-        // The hash table infrastructure exists in hash.rs but needs to be integrated here.
-        //
-        // Step 1: Probe the transposition table ONCE at the start of search (not at ply 0)
-        //   let hash_entry = if self.ply > 0 {
-        //       self.board.hash.probe()
-        //   } else {
-        //       None
-        //   };
-        //
-        // Step 2: Check if we can use the cached result for early cutoff
-        //   if let Some(entry) = hash_entry {
-        //       if entry.depth >= depth as u8 {
-        //           // Adjust mate scores for current ply distance
-        //           let adjusted_score = if entry.score > MATE_THRESHOLD {
-        //               entry.score - self.ply as i32
-        //           } else if entry.score < -MATE_THRESHOLD {
-        //               entry.score + self.ply as i32
-        //           } else {
-        //               entry.score
-        //           };
-        //
-        //           match entry.node_type {
-        //               NodeType::Exact => {
-        //                   self.board.hash.stats.exact_hits += 1;
-        //                   return adjusted_score;
-        //               }
-        //               NodeType::LowerBound => {
-        //                   if adjusted_score >= beta {
-        //                       self.board.hash.stats.cutoffs += 1;
-        //                       return adjusted_score;
-        //                   }
-        //               }
-        //               NodeType::UpperBound => {
-        //                   if adjusted_score <= alpha {
-        //                       self.board.hash.stats.fail_lows += 1;
-        //                       return adjusted_score;
-        //                   }
-        //               }
-        //           }
-        //       }
-        //   }
-        //
-        // Step 3: Extract hash move for move ordering
-        //   let hash_move: Option<Move> = hash_entry.and_then(|e| e.best_move);
-        //
-        // Step 4: After move generation, prioritize hash move
-        //   if let Some(hm) = hash_move {
-        //       for i in move_list_start..move_list_end {
-        //           if let Some(mv) = self.move_list[i] {
-        //               if mv.from == hm.from && mv.to == hm.to {
-        //                   self.move_list[i].as_mut().unwrap().score = HASH_SCORE as isize;
-        //                   break;
-        //               }
-        //           }
-        //       }
-        //   }
-        //
-        // Step 5: At end of search, store results in transposition table
-        //   // Determine node type
-        //   let node_type = if best_score >= beta {
-        //       NodeType::LowerBound  // Cut-node (fail-high)
-        //   } else if best_score > original_alpha {
-        //       NodeType::Exact  // PV-node
-        //   } else {
-        //       NodeType::UpperBound  // All-node (fail-low)
-        //   };
-        //
-        //   // Adjust mate scores for storage (relative to root, not current ply)
-        //   let stored_score = if best_score > MATE_THRESHOLD {
-        //       best_score + self.ply as i32
-        //   } else if best_score < -MATE_THRESHOLD {
-        //       best_score - self.ply as i32
-        //   } else {
-        //       best_score
-        //   };
-        //
-        //   // Store in hash table
-        //   if let Some(mv) = best_move {
-        //       self.board.hash.store_move(mv, depth as u8, stored_score, node_type);
-        //   } else if self.ply > 0 {
-        //       self.board.hash.store_without_move(depth as u8, stored_score, node_type);
-        //   }
-        //
-        // Note: The hash table probe and store methods already exist in hash.rs and work correctly.
-        // This integration would provide significant search speedup (2-5x) by avoiding re-computation
-        // of previously seen positions.
-
         // Check if we're currently in check
         let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
             .next_bit()
@@ -2654,6 +2530,7 @@ impl Position {
 
         let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
 
+        // TODO: Can this be removed (might affect Web client)?
         if in_check {
             depth += 1; // Extend search depth if in check
         }
@@ -2677,7 +2554,7 @@ impl Position {
         for move_index in move_list_start..move_list_end {
             self.sort(move_index as isize);
 
-            let current_move = self.move_list[move_index].unwrap();
+            let current_move = self.move_list[move_index].expect("Found empty Move");
 
             if !self.make_move(current_move.from, current_move.to, current_move.promote) {
                 // Move is illegal (leaves king in check)
@@ -2715,12 +2592,8 @@ impl Position {
                     if re_search_score > best_score {
                         best_score = re_search_score;
                         best_move = Some(current_move);
-
                         self.update_principal_variation(current_move);
-
-                        if best_score > alpha {
-                            alpha = best_score;
-                        }
+                        alpha = alpha.max(best_score);
                     }
 
                     continue; // Already took back the move
@@ -2736,12 +2609,8 @@ impl Position {
             if score > best_score {
                 best_score = score;
                 best_move = Some(current_move);
-
                 self.update_principal_variation(current_move);
-
-                if best_score > alpha {
-                    alpha = best_score;
-                }
+                alpha = alpha.max(best_score);
             }
         }
 
@@ -3231,5 +3100,59 @@ impl Position {
         fen.push_str(&fullmove.to_string());
 
         fen
+    }
+
+    /// Parse a move in algebraic notation (e2e4) and return the index in the move list
+    pub fn parse_move_string(&mut self, move_str: &str) -> Option<usize> {
+        if move_str.len() < 4 {
+            return None;
+        }
+
+        let chars: Vec<char> = move_str.chars().collect();
+
+        if chars[0] < 'a'
+            || chars[0] > 'h'
+            || chars[1] < '1'
+            || chars[1] > '8'
+            || chars[2] < 'a'
+            || chars[2] > 'h'
+            || chars[3] < '1'
+            || chars[3] > '8'
+        {
+            return None;
+        }
+
+        let from_file = (chars[0] as u8 - b'a') as usize;
+        let from_rank = (chars[1] as u8 - b'1') as usize;
+        let to_file = (chars[2] as u8 - b'a') as usize;
+        let to_rank = (chars[3] as u8 - b'1') as usize;
+
+        let from_square = from_rank * 8 + from_file;
+        let to_square = to_rank * 8 + to_file;
+
+        // Find matching move in move list
+        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
+            if let Some(mv) = self.move_list[i as usize]
+                && mv.from as usize == from_square
+                && mv.to as usize == to_square
+            {
+                return Some(i as usize);
+            }
+        }
+
+        None
+    }
+
+    pub fn get_legal_moves(&self) -> Vec<String> {
+        let mut moves = Vec::new();
+
+        for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
+            if let Some(mv) = self.move_list[i as usize] {
+                moves.push(Board::move_to_uci_string(mv.from, mv.to, mv.promote, false));
+            }
+        }
+
+        moves.sort();
+        moves
     }
 }

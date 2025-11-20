@@ -1,4 +1,8 @@
-use crate::{engine::Engine, position::Position, types::MoveData};
+use crate::{
+    engine::Engine,
+    position::Position,
+    types::{Board, MoveData},
+};
 use std::io::{self, Write};
 
 const ENGINE_NAME: &str = "Chess Engine";
@@ -63,7 +67,7 @@ pub fn uci_loop(engine: &mut Engine) {
                                 if !pv_string.is_empty() {
                                     pv_string.push(' ');
                                 }
-                                pv_string.push_str(&Engine::move_to_uci_string(
+                                pv_string.push_str(&Board::move_to_uci_string(
                                     mv.from, mv.to, mv.promote, false,
                                 ));
                             }
@@ -85,7 +89,7 @@ pub fn uci_loop(engine: &mut Engine) {
                 // Output the best move
                 if let (Some(from), Some(to)) = (result.best_move_from, result.best_move_to) {
                     let best_move =
-                        Engine::move_to_uci_string(from, to, result.best_move_promote, false);
+                        Board::move_to_uci_string(from, to, result.best_move_promote, false);
                     println!("bestmove {}", best_move);
                 } else {
                     // No legal moves found
@@ -155,7 +159,7 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
         while index < parts.len() {
             let move_str = parts[index];
 
-            let MoveData { from, to, promote } = Engine::move_from_uci_string(move_str)?;
+            let MoveData { from, to, promote } = Board::move_from_uci_string(move_str)?;
 
             engine.generate_moves();
 
@@ -305,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_move_from_uci_string() {
-        let result = Engine::move_from_uci_string("e2e4");
+        let result = Board::move_from_uci_string("e2e4");
         assert!(result.is_ok());
         let MoveData { from, to, promote } = result.unwrap();
         assert_eq!(from as usize, 12); // e2
@@ -315,7 +319,7 @@ mod tests {
 
     #[test]
     fn test_move_from_uci_string_promotion() {
-        let result = Engine::move_from_uci_string("e7e8q");
+        let result = Board::move_from_uci_string("e7e8q");
         assert!(result.is_ok());
         let MoveData { from, to, promote } = result.unwrap();
         assert_eq!(from as usize, 52); // e7
@@ -328,7 +332,7 @@ mod tests {
         use crate::types::Square;
         let from = Square::try_from(12u8).unwrap(); // e2
         let to = Square::try_from(28u8).unwrap(); // e4
-        let uci = Engine::move_to_uci_string(from, to, None, false);
+        let uci = Board::move_to_uci_string(from, to, None, false);
         assert_eq!(uci, "e2e4");
     }
 

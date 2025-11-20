@@ -6,9 +6,6 @@ pub const DEFAULT_MAX_QUIESCENCE_DEPTH: u16 = 6;
 pub const DEFAULT_PLAYER_TIME_REMAINING_MS: u64 = 120_000; // 2 minutes
 pub const DEFAULT_PLAYER_INCREMENT_MS: u64 = 0;
 
-pub const DEFAULT_FIXED_TIME: bool = false;
-pub const DEFAULT_MOVETIME_MS: u64 = 1000; // Value for fixed-time mode
-
 pub const SOFT_TO_HARD_LIMIT_RATIO: f64 = 0.75; // Hard limit is 1/30 of time remaining, plus increment
 
 pub const MAX_HISTORY_SCORE: isize = 10_000;
@@ -30,6 +27,7 @@ pub const MOVE_STACK: usize = 4000;
 pub const GAME_STACK: usize = 2000;
 
 /// Added to move score so that the move from the hash table is searched first.
+#[allow(dead_code)]
 pub const HASH_SCORE: i32 = 100_000_000;
 
 /// Added to move score so that captures are search right after the hash table.
@@ -256,18 +254,6 @@ pub const CASTLE_MASK: [u8; NUM_SQUARES] = [
 	  15, 15, 15, 15, 15, 15, 15, 15,
 	  15, 15, 15, 15, 15, 15, 15, 15,
 	   7, 15, 15, 15,  3, 15, 15, 11
-];
-
-#[rustfmt::skip]
-pub const LSB_64_TABLE: [u8; 64] = [
-    63, 30,  3, 32, 59, 14, 11, 33,
-    60, 24, 50,  9, 55, 19, 21, 34,
-    61, 29,  2, 53, 51, 23, 41, 18,
-    56, 28,  1, 43, 46, 27,  0, 35,
-    62, 31, 58,  4,  5, 49, 54,  6,
-    15, 52, 12, 40,  7, 42, 45, 16,
-    25, 57, 48, 13, 10, 39,  8, 44,
-    20, 47, 38, 22, 17, 37, 36, 26
 ];
 
 #[rustfmt::skip]
