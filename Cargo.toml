@@ -1,6 +1,6 @@
 [package]
 name = "bitboard_chess_engine"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 authors = ["Brendan Dagys <brendandagys@gmail.com>"]
 description = "A chess engine with UCI support"
