@@ -4,10 +4,6 @@ use chess_engine::{engine::Engine, position::Position};
 #[test]
 fn test_pv_collection() {
     let mut engine = Engine::new(None, None, None, None, None, Some(5), None, None, None);
-
-    // Starting position is already loaded
-    engine.generate_moves();
-
     let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
     // Verify we have a PV
@@ -38,8 +34,6 @@ fn test_pv_mate_in_one() {
 
     // Set up a mate in one position via new_game + moves
     // For now, just test with starting position
-    engine.generate_moves();
-
     let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
     // Verify we have a PV
@@ -59,8 +53,6 @@ fn test_pv_depth_increases() {
     let mut engine = Engine::new(None, None, None, None, None, Some(6), None, None, None);
 
     // Starting position is already loaded
-    engine.generate_moves();
-
     let result = engine.think(None::<fn(u16, i32, &mut Position)>);
 
     // With depth 6, we should get a reasonable PV

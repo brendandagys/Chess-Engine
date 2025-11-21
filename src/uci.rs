@@ -161,29 +161,15 @@ pub fn parse_position_command(engine: &mut Engine, command: &str) -> Result<(), 
 
             let MoveData { from, to, promote } = Board::move_from_uci_string(move_str)?;
 
-            engine.generate_moves();
+            let legal_moves = engine.position.get_legal_moves();
+            let move_uci = Board::move_to_uci_string(from, to, promote, false);
 
-            // Find the move in the legal move list
-            let mut found = false;
-            for i in
-                engine.position.ply..engine.position.first_move[1 + engine.position.ply] as usize
-            {
-                if let Some(mv) = engine.position.move_list[i]
-                    && mv.from == from
-                    && mv.to == to
-                    && mv.promote == promote
-                {
-                    // Make the move
-                    if !engine.position.make_move(from, to, None) {
-                        return Err(format!("Illegal move: {}", move_str));
-                    }
-                    found = true;
-                    break;
-                }
+            if !legal_moves.contains(&move_uci) {
+                return Err(format!("Illegal move: {}", move_str));
             }
 
-            if !found {
-                return Err(format!("Move not found in legal moves: {}", move_str));
+            if !engine.position.make_move(from, to, promote) {
+                return Err(format!("Failed to make move: {}", move_str));
             }
 
             index += 1;

@@ -258,7 +258,6 @@ impl CommandLineInterface {
                     }
                     self.engine.computer_side = None;
                     self.engine.position.take_back_move();
-                    self.engine.generate_moves();
                     self.display_board();
                     continue;
                 }
@@ -562,7 +561,6 @@ impl CommandLineInterface {
             };
 
         self.engine.position.make_move(from, to, promote);
-        self.engine.generate_moves();
         self.display_search_statistics(&result);
 
         println!(

@@ -3143,11 +3143,16 @@ impl Position {
         None
     }
 
-    pub fn get_legal_moves(&self) -> Vec<String> {
+    pub fn get_legal_moves(&mut self) -> Vec<String> {
+        self.generate_moves_and_captures(self.side, |_, _, _| 0);
+
         let mut moves = Vec::new();
 
         for i in self.first_move[self.ply]..self.first_move[self.ply + 1] {
-            if let Some(mv) = self.move_list[i as usize] {
+            if let Some(mv) = self.move_list[i as usize]
+                && self.make_move(mv.from, mv.to, mv.promote)
+            {
+                self.take_back_move();
                 moves.push(Board::move_to_uci_string(mv.from, mv.to, mv.promote, false));
             }
         }

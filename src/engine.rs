@@ -94,7 +94,13 @@ impl Engine {
             eprintln!("Could not load opening book: {e}");
         }
 
-        engine.generate_moves();
+        engine
+    }
+
+    pub fn from_fen(fen: &str) -> Self {
+        let mut engine = Engine::default();
+        engine.position = Position::from_fen(fen).expect("Failed to load FEN");
+        engine.position.set_material_scores();
         engine
     }
 
@@ -119,11 +125,6 @@ impl Engine {
         ));
 
         self.computer_side = None;
-    }
-
-    pub fn generate_moves(&mut self) {
-        self.position
-            .generate_moves_and_captures(self.position.side, |_, _, _| 0);
     }
 
     /// Core iterative deepening search logic. Returns SearchResult with best move and evaluation.
@@ -281,9 +282,9 @@ impl Engine {
         }
 
         SearchResult {
-            best_move_from: principal_variation[0].from.into(),
-            best_move_to: principal_variation[0].to.into(),
-            best_move_promote: principal_variation[0].promote,
+            best_move_from: principal_variation.first().map(|m| m.from),
+            best_move_to: principal_variation.first().map(|m| m.to),
+            best_move_promote: principal_variation.first().and_then(|m| m.promote),
             evaluation: final_score,
             depth: final_depth,
             nodes: self.position.nodes,
