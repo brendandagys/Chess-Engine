@@ -1147,7 +1147,8 @@ impl Position {
         }
     }
 
-    /// Generate all legal moves and captures for the given side
+    /// Generate all moves and captures for the given side.
+    /// These may result in a self-check; legality verified during application in search.
     pub fn generate_moves_and_captures<F>(&mut self, side: Side, get_history_score: F)
     where
         F: Fn(Side, Square, Square) -> isize,
@@ -2388,13 +2389,13 @@ impl Position {
     }
 
     /// Incrementally sort the move list by selecting the best move from the
-    /// unsorted portion and swapping it to the front, utilizing selection sort.
+    /// unsorted portion and swapping it to the front (selection sort).
     fn sort(&mut self, from_index: isize) {
         let mut best_score = self.move_list[from_index as usize].unwrap().score;
         let mut best_score_index = from_index;
 
         for i in from_index + 1..self.first_move[self.ply + 1] {
-            let move_ = self.move_list[i as usize].expect("Found empty Move");
+            let move_ = self.move_list[i as usize].expect("Empty Move while sorting move list");
 
             if move_.score > best_score {
                 best_score = move_.score;
@@ -2408,8 +2409,9 @@ impl Position {
 
     /// Search backward for an identical position (repetition).
     /// Positions are identical if the key is the same.
-    fn search_backward_for_identical_position(&self) -> bool {
+    fn has_position_occurred_prior_in_search(&self) -> bool {
         let mut cur = self.ply_from_start_of_game.saturating_sub(4);
+
         let end = self
             .ply_from_start_of_game
             .saturating_sub(self.fifty as usize);
@@ -2476,6 +2478,15 @@ impl Position {
         self.pv_length[self.ply] = self.pv_length[self.ply + 1];
     }
 
+    fn is_in_check(&self) -> bool {
+        let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
+            .next_bit()
+            .try_into()
+            .expect("Failed to convert square to Square");
+
+        self.is_square_attacked_by_side(self.side.opponent(), king_square)
+    }
+
     /// Principal Variation Search with alpha-beta pruning.
     /// PVS is an enhancement of alpha-beta that uses null-window searches for better pruning.
     ///
@@ -2497,23 +2508,16 @@ impl Position {
             panic!("NodeLimitReached");
         }
 
-        // Track selective depth for main search too
         self.max_depth_reached = self.max_depth_reached.max(self.ply);
 
-        // Check for draw by repetition (2-fold during search to avoid loops)
-        if self.ply > 0 && self.search_backward_for_identical_position() {
-            self.pv_length[self.ply] = self.ply;
-            return 0;
-        }
-
-        // Check for draw by insufficient material
-        if self.has_insufficient_material() {
-            self.pv_length[self.ply] = self.ply;
+        if (self.ply > 0 && self.has_position_occurred_prior_in_search())
+            || self.has_insufficient_material()
+        {
+            self.pv_length[self.ply] = self.ply; // Truncate PV at this point
             return 0;
         }
 
         if depth == 0 {
-            // Initialize PV length for leaf nodes
             self.pv_length[self.ply] = self.ply;
             return self.quiescence_search(alpha, beta, DEFAULT_MAX_QUIESCENCE_DEPTH, max_nodes);
         }
@@ -2522,17 +2526,10 @@ impl Position {
             self.check_if_time_is_exhausted();
         }
 
-        // Check if we're currently in check
-        let king_square = self.board.bit_pieces[self.side as usize][Piece::King as usize]
-            .next_bit()
-            .try_into()
-            .expect("Failed to convert square to Square");
+        let in_check = self.is_in_check();
 
-        let in_check = self.is_square_attacked_by_side(self.side.opponent(), king_square);
-
-        // TODO: Can this be removed (might affect Web client)?
         if in_check {
-            depth += 1; // Extend search depth if in check
+            depth += 1;
         }
 
         self.pv_length[self.ply] = self.ply;
@@ -2540,7 +2537,6 @@ impl Position {
         let mut best_score = -INFINITY_SCORE;
         let mut best_move: Option<Move> = None;
 
-        // Generate all legal moves
         self.generate_moves_and_captures(self.side, |side, from, to| {
             history_table[side as usize][from as usize][to as usize]
         });
@@ -2549,7 +2545,7 @@ impl Position {
         let move_list_end = self.first_move[self.ply + 1] as usize;
 
         let mut legal_moves_count = 0;
-        let mut is_pv_node = true; // Track if this is still a PV node
+        let mut is_pv_node = true;
 
         for move_index in move_list_start..move_list_end {
             self.sort(move_index as isize);
@@ -2570,7 +2566,7 @@ impl Position {
                 score = -self.search(-beta, -alpha, depth - 1, history_table, max_nodes);
                 is_pv_node = false;
             } else {
-                // Non-PV moves: search with null/"zero" window (key optimization of PVS/NegaScout)
+                // Non-PV moves: search with null/"zero" window (PVS/NegaScout optimization)
                 score = -self.search(-(alpha + 1), -alpha, depth - 1, history_table, max_nodes);
 
                 if score > alpha && score < beta {
@@ -2614,19 +2610,16 @@ impl Position {
             }
         }
 
-        // Check for checkmate or stalemate
         if legal_moves_count == 0 {
             self.pv_length[self.ply] = self.ply;
+
             if in_check {
                 // Checkmate - return negative score, prefer shorter mates
                 return -MATE_SCORE + self.ply as i32;
-            } else {
-                // Stalemate
-                return 0;
             }
+            return 0; // Stalemate
         }
 
-        // Check for draw by 50-move rule
         if self.fifty >= 100 {
             self.pv_length[self.ply] = self.ply;
             return 0;
