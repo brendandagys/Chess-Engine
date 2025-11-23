@@ -706,15 +706,18 @@ impl Position {
             0, 1, 0, 1, 0, 1,
         ];
 
-        // Character representation of pieces
-        const PIECE_CHAR: [char; 7] = ['P', 'N', 'B', 'R', 'Q', 'K', ' '];
+        // Unicode chess piece characters
+        const PIECE_CHAR: [[char; 6]; 2] = [
+            ['♙', '♘', '♗', '♖', '♕', '♔'], // White pieces
+            ['♟', '♞', '♝', '♜', '♛', '♚'], // Black pieces
+        ];
 
         // Terminal color codes for better display
         let reset = "\x1b[0m";
         let dark_square = "\x1b[48;5;94m"; // Dark brown background
         let light_square = "\x1b[48;5;223m"; // Light brown background
         let white_piece_color = "\x1b[97m"; // White text for white pieces
-        let black_piece_color = "\x1b[96m"; // Cyan text for black pieces
+        let black_piece_color = "\x1b[30m"; // Black text for black pieces
 
         println!();
 
@@ -751,12 +754,9 @@ impl Position {
                 match piece {
                     Piece::Empty => print!("   "),
                     _ => {
-                        let piece_char = PIECE_CHAR[piece as usize];
-                        if is_white_piece {
-                            print!(" {} ", piece_char);
-                        } else {
-                            print!(" {} ", piece_char.to_lowercase());
-                        }
+                        let side_idx = if is_white_piece { 0 } else { 1 };
+                        let piece_char = PIECE_CHAR[side_idx][piece as usize];
+                        print!(" {} ", piece_char);
                     }
                 }
 
