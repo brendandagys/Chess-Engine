@@ -37,7 +37,7 @@ impl BitBoard {
         }
 
         let bit_position = self.0.trailing_zeros() as u8;
-        self.0 &= self.0 - 1; // Clear the least significant bit
+        self.0 &= self.0 - 1; // Clear least significant bit
         bit_position
     }
 

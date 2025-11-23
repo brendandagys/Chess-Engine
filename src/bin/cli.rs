@@ -309,7 +309,7 @@ impl CommandLineInterface {
                 continue;
             }
 
-            let from_square = Position::parse_square(command[..2].trim());
+            let from_square = Self::parse_square(command[..2].trim());
             if from_square.is_none() {
                 println!("\nINVALID FROM SQUARE!");
                 continue;
@@ -345,7 +345,7 @@ impl CommandLineInterface {
                 }
             }
 
-            let to_square = Position::parse_square(to_input.trim());
+            let to_square = Self::parse_square(to_input.trim());
             if to_square.is_none() {
                 println!("\nINVALID TO SQUARE!");
                 continue;
@@ -578,6 +578,23 @@ impl CommandLineInterface {
         );
 
         true
+    }
+
+    fn parse_square(input: &str) -> Option<usize> {
+        if input.len() != 2 {
+            return None;
+        }
+
+        let chars: Vec<char> = input.chars().collect();
+
+        if chars[0] < 'a' || chars[0] > 'h' || chars[1] < '1' || chars[1] > '8' {
+            return None;
+        }
+
+        let file = (chars[0] as u8 - b'a') as usize;
+        let rank = (chars[1] as u8 - b'1') as usize;
+
+        Some(rank * 8 + file)
     }
 }
 
