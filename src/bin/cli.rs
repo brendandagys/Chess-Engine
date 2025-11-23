@@ -541,8 +541,16 @@ impl CommandLineInterface {
                     score
                 );
 
-                if let (Some(from), Some(to)) = (position.best_move_from, position.best_move_to) {
-                    print!("{:^18} ", Board::move_to_uci_string(from, to, None, true));
+                if let Some(move_) = position
+                    .pv_table
+                    .get(0)
+                    .and_then(|ply| ply.get(0))
+                    .and_then(|&m| m)
+                {
+                    print!(
+                        "{:^18} ",
+                        Board::move_to_uci_string(move_.from, move_.to, move_.promote, true)
+                    );
                 } else {
                     print!("{:^18} ", "");
                 }

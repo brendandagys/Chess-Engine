@@ -50,8 +50,11 @@ pub fn uci_loop(engine: &mut Engine) {
 
                 let result = engine.think(Some(|depth, score, position: &mut Position| {
                     // Output UCI info line if requested
-                    if let (Some(_from), Some(_to)) =
-                        (position.best_move_from, position.best_move_to)
+                    if let Some(_) = position
+                        .pv_table
+                        .get(0)
+                        .and_then(|ply| ply.get(0))
+                        .and_then(|&m| m)
                     {
                         let time_ms = position.time_manager.elapsed().as_millis() as u64;
                         let nps = if time_ms > 0 {

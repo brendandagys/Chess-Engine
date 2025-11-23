@@ -22,8 +22,6 @@ pub struct Position {
     pub game_list: [Option<Game>; GAME_STACK], // Indexes by `ply_from_start_of_game`
     pub move_list: [Option<Move>; MOVE_STACK],
     pub first_move: [isize; MAX_PLY], // First move location for each ply in the move list (ply 1: 0, ply 2: first_move[1])
-    pub best_move_from: Option<Square>, // Found from the search/hash
-    pub best_move_to: Option<Square>, // Found from the search/hash
 
     pub pv_table: [[Option<Move>; MAX_PLY]; MAX_PLY], // Principal variation: [ply][move_index]
     pub pv_length: [usize; MAX_PLY],                  // Length of PV at each ply
@@ -124,8 +122,6 @@ impl Position {
             current_non_pawn_score: [0; NUM_SIDES],
             traditional_material_score: [0; NUM_SIDES],
             castle: 0b1111, // All castling rights available
-            best_move_from: None,
-            best_move_to: None,
             pv_table: [[None; MAX_PLY]; MAX_PLY],
             pv_length: [0; MAX_PLY],
             time_manager,
@@ -2535,7 +2531,6 @@ impl Position {
         self.pv_length[self.ply] = self.ply;
 
         let mut best_score = -INFINITY_SCORE;
-        let mut best_move: Option<Move> = None;
 
         self.generate_moves_and_captures(self.side, |side, from, to| {
             history_table[side as usize][from as usize][to as usize]
@@ -2587,7 +2582,6 @@ impl Position {
 
                     if re_search_score > best_score {
                         best_score = re_search_score;
-                        best_move = Some(current_move);
                         self.update_principal_variation(current_move);
                         alpha = alpha.max(best_score);
                     }
@@ -2604,7 +2598,6 @@ impl Position {
 
             if score > best_score {
                 best_score = score;
-                best_move = Some(current_move);
                 self.update_principal_variation(current_move);
                 alpha = alpha.max(best_score);
             }
@@ -2623,14 +2616,6 @@ impl Position {
         if self.fifty >= 100 {
             self.pv_length[self.ply] = self.ply;
             return 0;
-        }
-
-        // Store best move at root for retrieval later
-        if self.ply == 0
-            && let Some(mv) = best_move
-        {
-            self.best_move_from = Some(mv.from);
-            self.best_move_to = Some(mv.to);
         }
 
         best_score
