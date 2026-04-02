@@ -1,3 +1,4 @@
+pub mod api;
 mod bitboard;
 mod board;
 mod constants;

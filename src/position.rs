@@ -1737,7 +1737,7 @@ impl Position {
     /// 3. Update alpha if stand pat improves it
     /// 4. Generate and search all capture moves recursively until the position is quiet (base case)
     /// 5. Apply alpha-beta pruning to reduce search space
-    fn quiescence_search(
+    pub fn quiescence_search(
         &mut self,
         mut alpha: i32,
         beta: i32,
